@@ -120,8 +120,10 @@ app.use('/api/banners', bannerRoutes);
 // Test database connection and start server
 async function startServer() {
   try {
-    // 1. Ensure the PostgreSQL database exists
-    await ensureDatabaseExists();
+    // 1. Ensure the PostgreSQL database exists (only local development)
+    if (process.env.NODE_ENV !== 'production') {
+      await ensureDatabaseExists();
+    }
 
     // 2. Connect and authenticate
     await sequelize.authenticate();
