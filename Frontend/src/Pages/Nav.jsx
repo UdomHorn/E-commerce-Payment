@@ -241,6 +241,18 @@ const Nav = () => {
                       Men Collection
                     </Link>
                   </div>
+                  {user && (
+                    <div>
+                      <Link
+                        to="/my-orders"
+                        onClick={() => setShowMenu(false)}
+                        className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
+                      >
+                        My Purchases
+                      </Link>
+                    </div>
+                  )}
+
                   {user?.role === 'admin' && (
                     <div>
                       <Link

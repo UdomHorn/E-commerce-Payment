@@ -5,6 +5,8 @@ const { Product, Order, OrderItem } = require('../models');
 const sequelize = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 
+const jwt = require('jsonwebtoken');
+
 // @route   POST /api/payment/create-payment-intent
 // @desc    Create Stripe Payment Intent and save PENDING order in PostgreSQL
 // @access  Public
@@ -87,8 +89,21 @@ router.post('/create-payment-intent', async (req, res) => {
       }
     });
 
+    // Check if user is logged in to associate order with userId
+    let userId = null;
+    const token = req.cookies?.authToken || (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : null);
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        userId = decoded.id;
+      } catch (err) {
+        // Ignore invalid JWT for guest checkouts
+      }
+    }
+
     // Create a PENDING Order in PostgreSQL
     const order = await Order.create({
+      userId,
       stripePaymentIntentId: paymentIntent.id,
       status: 'PENDING',
       totalAmount,
@@ -214,6 +229,164 @@ router.get('/dashboard-stats', authMiddleware, adminMiddleware, async (req, res)
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
     res.status(500).json({ error: 'Failed to retrieve dashboard metrics.' });
+  }
+});
+
+// @route   GET /api/payment/my-orders
+// @desc    Get logged-in user's orders
+// @access  Private
+router.get('/my-orders', authMiddleware, async (req, res) => {
+  try {
+    const orders = await Order.findAll({
+      where: {
+        [sequelize.Sequelize.Op.or]: [
+          { userId: req.user.id },
+          { customerEmail: req.user.email }
+        ]
+      },
+      order: [['createdAt', 'DESC']],
+      include: [
+        {
+          model: OrderItem,
+          as: 'items',
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['name', 'code', 'images']
+            }
+          ]
+        }
+      ]
+    });
+    res.json(orders);
+  } catch (error) {
+    console.error('Error fetching my orders:', error);
+    res.status(500).json({ error: 'Failed to retrieve orders.' });
+  }
+});
+
+// @route   GET /api/payment/order/:id
+// @desc    Get order details by ID for receipt
+// @access  Public (Secured by optional email matching or matching userId)
+router.get('/order/:id', async (req, res) => {
+  try {
+    const order = await Order.findByPk(req.params.id, {
+      include: [
+        {
+          model: OrderItem,
+          as: 'items',
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['name', 'code', 'images']
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    // Fallback: If the order status is still PENDING, query Stripe directly
+    // to verify if it has succeeded, and update the database accordingly.
+    if (order.status === 'PENDING' && order.stripePaymentIntentId) {
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId);
+        if (paymentIntent.status === 'succeeded') {
+          await sequelize.transaction(async (t) => {
+            const freshOrder = await Order.findByPk(order.id, {
+              include: [{ model: OrderItem, as: 'items' }],
+              transaction: t
+            });
+            if (freshOrder && freshOrder.status !== 'PAID') {
+              freshOrder.status = 'PAID';
+              await freshOrder.save({ transaction: t });
+
+              for (const item of freshOrder.items) {
+                const product = await Product.findByPk(item.productId, { transaction: t });
+                if (product) {
+                  // Deduct Size Stock
+                  if (product.sizeStock && item.selectedSize) {
+                    const sizeStock = { ...product.sizeStock };
+                    if (item.selectedColor && sizeStock[item.selectedColor]) {
+                      const colorSizeStock = { ...sizeStock[item.selectedColor] };
+                      const currentSizeStock = parseInt(colorSizeStock[item.selectedSize], 10);
+                      if (!isNaN(currentSizeStock)) {
+                        colorSizeStock[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+                        sizeStock[item.selectedColor] = colorSizeStock;
+                        product.sizeStock = sizeStock;
+                      }
+                    } else {
+                      const currentSizeStock = parseInt(sizeStock[item.selectedSize], 10);
+                      if (!isNaN(currentSizeStock)) {
+                        sizeStock[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+                        product.sizeStock = sizeStock;
+                      }
+                    }
+                  }
+
+                  // Deduct Color Stock
+                  if (product.colorStock && item.selectedColor) {
+                    const colorStock = { ...product.colorStock };
+                    const currentColorStock = parseInt(colorStock[item.selectedColor], 10);
+                    if (!isNaN(currentColorStock)) {
+                      colorStock[item.selectedColor] = Math.max(0, currentColorStock - item.quantity);
+                      product.colorStock = colorStock;
+                    }
+                  }
+
+                  await product.save({ transaction: t });
+                  console.log(`📉 Fallback: Deducted ${item.quantity}x from "${product.name}" for size "${item.selectedSize}" & color "${item.selectedColor}".`);
+                }
+              }
+              // Update status on the local in-memory order object
+              order.status = 'PAID';
+              console.log(`✅ Fallback: Order #${order.id} status synced to PAID successfully.`);
+            }
+          });
+        }
+      } catch (syncError) {
+        console.error('⚠️ Failed to sync pending order status with Stripe:', syncError);
+      }
+    }
+
+    // Security check:
+    // If order has userId and is requested by a logged-in user, ensure it matches.
+    // If it's a guest order, allow retrieval matching customerEmail parameter.
+    let isAuthorized = false;
+    
+    // Check if token exists
+    const token = req.cookies?.authToken || (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : null);
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (order.userId === decoded.id) {
+          isAuthorized = true;
+        }
+      } catch (err) {
+        // Ignore token verify error
+      }
+    }
+
+    // Check if email query parameter matches
+    const emailQuery = req.query.email;
+    if (emailQuery && order.customerEmail.toLowerCase() === emailQuery.toLowerCase()) {
+      isAuthorized = true;
+    }
+
+    // Reject access if neither the user ID matches nor the email query matches the order email
+    if (!isAuthorized) {
+      return res.status(403).json({ error: 'Access Denied. You are not authorized to view this order receipt.' });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error('Error fetching order receipt:', error);
+    res.status(500).json({ error: 'Failed to retrieve order receipt.' });
   }
 });
 
