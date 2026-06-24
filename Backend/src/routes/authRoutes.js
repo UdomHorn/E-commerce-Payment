@@ -36,12 +36,19 @@ router.post('/register', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { id: newUser.id, email: newUser.email, role: newUser.role },
-      JWT_SECRET,
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
+    // Set HTTP-Only cookie
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     res.status(201).json({
-      token,
       user: {
         id: newUser.id,
         email: newUser.email,
@@ -78,12 +85,19 @@ router.post('/login', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
+    // Set HTTP-Only cookie
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     res.json({
-      token,
       user: {
         id: user.id,
         email: user.email,
@@ -108,6 +122,16 @@ router.get('/me', authMiddleware, async (req, res) => {
     console.error('Fetch me error:', error);
     res.status(500).json({ error: 'Internal server error.' });
   }
+});
+
+// POST /api/auth/logout
+router.post('/logout', (req, res) => {
+  res.clearCookie('authToken', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+  });
+  res.json({ message: 'Successfully signed out.' });
 });
 
 module.exports = router;

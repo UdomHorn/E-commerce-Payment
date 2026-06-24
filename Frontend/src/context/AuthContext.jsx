@@ -9,36 +9,29 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
-  // Check for existing token on mount
+  // Check for existing cookie session on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem('authToken');
-    if (storedToken) {
-      fetchUserProfile(storedToken);
-    } else {
-      setLoading(false);
-    }
+    fetchUserProfile();
   }, []);
 
-  const fetchUserProfile = async (authToken) => {
+  const fetchUserProfile = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
         const data = await response.json();
         setUser(data);
-        setToken(authToken);
+        setToken('cookie_authenticated');
       } else {
-        // Token invalid or expired
-        localStorage.removeItem('authToken');
         setUser(null);
         setToken(null);
       }
     } catch (err) {
       console.error('Error fetching user profile:', err);
+      setUser(null);
+      setToken(null);
     } finally {
       setLoading(false);
     }
@@ -51,6 +44,7 @@ export const AuthProvider = ({ children }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
 
@@ -60,9 +54,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: data.error || 'Failed to sign in.' };
       }
 
-      localStorage.setItem('authToken', data.token);
       setUser(data.user);
-      setToken(data.token);
+      setToken('cookie_authenticated');
       setAuthModalOpen(false); // Auto close modal on successful login
       return { success: true };
     } catch (err) {
@@ -78,6 +71,7 @@ export const AuthProvider = ({ children }) => {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
 
@@ -87,9 +81,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error: data.error || 'Failed to sign up.' };
       }
 
-      localStorage.setItem('authToken', data.token);
       setUser(data.user);
-      setToken(data.token);
+      setToken('cookie_authenticated');
       setAuthModalOpen(false); // Auto close modal on successful register
       return { success: true };
     } catch (err) {
@@ -98,10 +91,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('authToken');
-    setUser(null);
-    setToken(null);
+  const logout = async () => {
+    try {
+      await fetch(`${API_BASE}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setUser(null);
+      setToken(null);
+    }
   };
 
   const openAuthModal = () => setAuthModalOpen(true);

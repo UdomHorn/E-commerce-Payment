@@ -1,16 +1,29 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const sequelize = require('./config/database');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { Order, OrderItem, Product } = require('./models');
 const ensureDatabaseExists = require('./config/initDb');
 require('dotenv').config();
 
+// Enforce JWT_SECRET environment validation on startup
+if (!process.env.JWT_SECRET) {
+  console.error('❌ FATAL ERROR: JWT_SECRET is not defined in the environment variables.');
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Enable CORS
-app.use(cors());
+// Enable CORS with credentials support
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
+
+// Cookie Parser Middleware
+app.use(cookieParser());
 
 // 1. Stripe Webhook - MUST run before express.json() to get raw buffer
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
