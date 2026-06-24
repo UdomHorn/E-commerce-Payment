@@ -40,6 +40,7 @@ const Men = () => {
           {products.map((prod) => (
             <HightLightCard
               key={prod.id}
+              product={prod}
               page={`/product/${prod.code || prod.id}`}
               src={prod.images && prod.images[0]}
               price={`$${prod.price.toFixed(2)}`}

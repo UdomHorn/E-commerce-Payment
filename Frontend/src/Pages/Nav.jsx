@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faBars, faMagnifyingGlass, faBell, faGear, faXmark, faSpinner } from '@fortawesome/free-solid-svg-icons'
+import { faBars, faMagnifyingGlass, faHeart, faBagShopping, faXmark, faSpinner } from '@fortawesome/free-solid-svg-icons'
 import { motion, AnimatePresence } from "framer-motion"
 import logo from '../assets/Images/logo.png'
 import { Link, useNavigate } from 'react-router-dom'
 import API_BASE from '../config'
+import { useCart } from '../context/CartContext'
+import { useFavorites } from '../context/FavoritesContext'
+import { useAuth } from '../context/AuthContext'
 
 const Nav = () => {
   // const [showLogin, setShowLogin] = useState(false);
   // const [gender, setGender] = useState("");
+  const { getCartCount } = useCart();
+  const { getFavoritesCount } = useFavorites();
+  const { user, openAuthModal, logout } = useAuth();
   const [showSearch, setShowSearch] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -29,9 +36,9 @@ const Nav = () => {
     }
   }, [showSearch]);
 
-  // Disable body scroll when search is active
+  // Disable body scroll when search or menu is active
   useEffect(() => {
-    if (showSearch) {
+    if (showSearch || showMenu) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -39,13 +46,14 @@ const Nav = () => {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showSearch]);
+  }, [showSearch, showMenu]);
 
-  // Handle Escape key to close search
+  // Handle Escape key to close search or menu
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         setShowSearch(false);
+        setShowMenu(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -96,9 +104,13 @@ const Nav = () => {
       <div className='w-full overflow-hidden bg-white flex justify-center items-center'>
         <div className='flex justify-between w-[80%] items-center p-2.5 max-md:w-full '>
           <div className='flex gap-2 items-center text-2xl '>
-            <div className='cursor-pointer'>
+            <button
+              onClick={() => setShowMenu(true)}
+              className='cursor-pointer p-1 hover:text-gray-600 transition-colors focus:outline-none'
+              aria-label="Open menu"
+            >
               <FontAwesomeIcon icon={faBars} />
-            </div>
+            </button>
             <div className='w-[120px] hidden max-md:block '>
               <Link to="/">
                 <img src={logo} alt="" />
@@ -120,18 +132,171 @@ const Nav = () => {
             >
               <FontAwesomeIcon icon={faMagnifyingGlass} />
             </button>
-            <div className='cursor-pointer p-1 hover:text-gray-600 transition-colors'>
-              <FontAwesomeIcon icon={faBell} />
-            </div>
-            <div className='cursor-pointer p-1 hover:text-gray-600 transition-colors'>
-              <FontAwesomeIcon icon={faGear} />
-            </div>
-            <div className='font-roboto cursor-pointer p-1 hover:text-gray-600 transition-colors'>
-              Login
-            </div>
+            <Link
+              to="/favorites"
+              className='cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center'
+              aria-label="Favorites"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                strokeWidth="1.5" 
+                stroke="currentColor" 
+                className="w-6 h-6"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+              </svg>
+            </Link>
+            <Link
+              to="/checkout"
+              className='cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center'
+              aria-label="Cart"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                strokeWidth="1.5" 
+                stroke="currentColor" 
+                className="w-6 h-6"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+              </svg>
+              {getCartCount() > 0 && (
+                <span className="absolute -bottom-3.5 text-black text-[12px] font-bold font-roboto leading-none">
+                  {getCartCount()}
+                </span>
+              )}
+            </Link>
           </div>
         </div>
       </div>
+
+      {/* Slide-out Burger Menu Sidebar */}
+      <AnimatePresence>
+        {showMenu && (
+          <>
+            {/* Backdrop Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setShowMenu(false)}
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs"
+            />
+
+            {/* Sidebar Container */}
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed left-0 top-0 bottom-0 z-50 w-full max-w-[300px] bg-white shadow-2xl flex flex-col h-full"
+            >
+              {/* Sidebar Header */}
+              <div className="flex justify-between items-center px-6 py-5 border-b border-gray-100">
+                <div className="w-[100px]">
+                  <Link to="/" onClick={() => setShowMenu(false)}>
+                    <img src={logo} alt="Logo" />
+                  </Link>
+                </div>
+                <button
+                  onClick={() => setShowMenu(false)}
+                  className="text-gray-500 hover:text-black transition-colors p-2 text-xl cursor-pointer focus:outline-none"
+                  aria-label="Close menu"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
+              </div>
+
+              {/* Navigation Links */}
+              <nav className="flex-1 px-6 py-8 flex flex-col justify-between overflow-y-auto">
+                <div className="space-y-6">
+                  <div>
+                    <Link
+                      to="/"
+                      onClick={() => setShowMenu(false)}
+                      className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
+                    >
+                      Home
+                    </Link>
+                  </div>
+                  <div>
+                    <Link
+                      to="/Women"
+                      onClick={() => setShowMenu(false)}
+                      className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
+                    >
+                      Women Collection
+                    </Link>
+                  </div>
+                  <div>
+                    <Link
+                      to="/Men"
+                      onClick={() => setShowMenu(false)}
+                      className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
+                    >
+                      Men Collection
+                    </Link>
+                  </div>
+                  {user?.role === 'admin' && (
+                    <div>
+                      <Link
+                        to="/admin/upload"
+                        onClick={() => setShowMenu(false)}
+                        className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
+                      >
+                        Admin Portal
+                      </Link>
+                    </div>
+                  )}
+                  
+                  {/* Authentication section in drawer */}
+                  <div className="pt-4 border-t border-gray-100">
+                    {user ? (
+                      <div className="space-y-4">
+                        <div className="text-sm text-gray-500">
+                          Signed in as <span className="font-semibold text-gray-800 block truncate">{user.email}</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            logout();
+                            setShowMenu(false);
+                          }}
+                          className="w-full py-2.5 bg-black text-white hover:opacity-90 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
+                        >
+                          Sign Out
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          openAuthModal();
+                        }}
+                        className="w-full py-2.5 bg-black text-white hover:opacity-90 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
+                      >
+                        Sign In
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Sidebar Footer Info */}
+                <div className="text-xs text-gray-400 space-y-2 mt-8 pt-6 border-t border-gray-100">
+                  <p>&copy; {new Date().getFullYear()} TEN11. All rights reserved.</p>
+                  <div className="flex gap-4">
+                    <span className="hover:text-black cursor-pointer">Privacy Policy</span>
+                    <span className="hover:text-black cursor-pointer">Terms of Service</span>
+                  </div>
+                </div>
+              </nav>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Modern Fullscreen Search Overlay */}
       <AnimatePresence>
@@ -172,7 +337,7 @@ const Nav = () => {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Search products by name..."
+                  placeholder="Search products by name or SKU/code..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-transparent text-2xl font-light text-gray-800 placeholder-gray-400 pb-3 pl-8 border-b border-gray-300 focus:border-black focus:outline-none transition-colors"
@@ -198,7 +363,7 @@ const Nav = () => {
                       !loading && (
                         <div className="text-center py-16">
                           <p className="text-lg text-gray-500 mb-2">No products found for "{searchQuery}"</p>
-                          <p className="text-sm text-gray-400">Try searching for another product name.</p>
+                          <p className="text-sm text-gray-400">Try searching for another product name or SKU/code.</p>
                         </div>
                       )
                     ) : (
@@ -304,4 +469,5 @@ const Nav = () => {
   )
 }
 
-export default Nav
+export default Nav
+

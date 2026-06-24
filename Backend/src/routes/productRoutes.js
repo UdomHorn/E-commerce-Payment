@@ -3,6 +3,7 @@ const router = express.Router();
 const { Op } = require('sequelize');
 const Product = require('../models/Product');
 const { upload } = require('../config/cloudinary');
+const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 
 // Helper to parse arrays from requests safely
 const parseArray = (input) => {
@@ -19,9 +20,11 @@ const parseArray = (input) => {
 
 // @route   POST /api/products
 // @desc    Create a new product with image uploads to Cloudinary
-// @access  Public (Will restrict with Admin Auth in Phase 5)
+// @access  Private/Admin
 router.post(
   '/',
+  authMiddleware,
+  adminMiddleware,
   upload.fields([
     { name: 'cardImage', maxCount: 1 },
     { name: 'detailImages', maxCount: 5 }
@@ -100,8 +103,11 @@ router.get('/', async (req, res) => {
     let whereClause = {};
 
     if (search) {
-      whereClause.name = {
-        [Op.iLike]: `%${search}%`
+      whereClause = {
+        [Op.or]: [
+          { name: { [Op.iLike]: `%${search}%` } },
+          { code: { [Op.iLike]: `%${search}%` } }
+        ]
       };
     }
 
@@ -145,6 +151,120 @@ router.get('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching product details:', error);
     res.status(500).json({ error: 'Server error fetching product.' });
+  }
+});
+
+// @route   PUT /api/products/:id
+// @desc    Update a product (Admin only)
+// @access  Private/Admin
+router.put(
+  '/:id',
+  authMiddleware,
+  adminMiddleware,
+  upload.fields([
+    { name: 'cardImage', maxCount: 1 },
+    { name: 'detailImages', maxCount: 5 }
+  ]),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const product = await Product.findByPk(id);
+      if (!product) {
+        return res.status(404).json({ error: 'Product not found.' });
+      }
+
+      const { name, price, description, modelInfo, category, code, colors, sizes, sizeStock, colorStock } = req.body;
+
+      // Check if SKU is changed and already exists on another product
+      if (code && code !== product.code) {
+        const existingProduct = await Product.findOne({ where: { code } });
+        if (existingProduct) {
+          return res.status(400).json({ error: `Product with SKU '${code}' already exists.` });
+        }
+      }
+
+      // Image handling
+      let imageUrls = product.images; // Default to existing images
+
+      const cardImageFiles = req.files && req.files['cardImage'] ? req.files['cardImage'] : [];
+      const detailImageFiles = req.files && req.files['detailImages'] ? req.files['detailImages'] : [];
+
+      if (cardImageFiles.length > 0 || detailImageFiles.length > 0) {
+        const cardImageUrl = cardImageFiles.length > 0 ? cardImageFiles[0].path : null;
+        const detailImageUrls = detailImageFiles.map(file => file.path);
+
+        const newImageUrls = [];
+        if (cardImageUrl) {
+          newImageUrls.push(cardImageUrl);
+        } else if (product.images.length > 0) {
+          newImageUrls.push(product.images[0]); // Keep old cardImage
+        }
+
+        if (detailImageUrls.length > 0) {
+          newImageUrls.push(...detailImageUrls);
+        } else if (product.images.length > 1) {
+          newImageUrls.push(...product.images.slice(1)); // Keep old details
+        }
+        imageUrls = newImageUrls;
+      }
+
+      // Parse JSON stocks
+      let parsedSizeStock = product.sizeStock;
+      if (sizeStock) {
+        try {
+          parsedSizeStock = typeof sizeStock === 'string' ? JSON.parse(sizeStock) : sizeStock;
+        } catch (err) {
+          console.error('Failed to parse sizeStock:', err);
+        }
+      }
+
+      let parsedColorStock = product.colorStock;
+      if (colorStock) {
+        try {
+          parsedColorStock = typeof colorStock === 'string' ? JSON.parse(colorStock) : colorStock;
+        } catch (err) {
+          console.error('Failed to parse colorStock:', err);
+        }
+      }
+
+      await product.update({
+        code: code || product.code,
+        name: name || product.name,
+        price: price ? parseFloat(price) : product.price,
+        description: description !== undefined ? description : product.description,
+        modelInfo: modelInfo !== undefined ? modelInfo : product.modelInfo,
+        category: category || product.category,
+        images: imageUrls,
+        colors: colors ? parseArray(colors) : product.colors,
+        sizes: sizes ? parseArray(sizes) : product.sizes,
+        sizeStock: parsedSizeStock,
+        colorStock: parsedColorStock
+      });
+
+      res.json(product);
+    } catch (error) {
+      console.error('Error updating product:', error);
+      res.status(500).json({ error: 'Server error updating product.' });
+    }
+  }
+);
+
+// @route   DELETE /api/products/:id
+// @desc    Delete a product (Admin only)
+// @access  Private/Admin
+router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findByPk(id);
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+
+    await product.destroy();
+    res.json({ message: 'Product deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({ error: 'Server error deleting product.' });
   }
 });
 

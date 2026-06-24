@@ -3,6 +3,7 @@ const router = express.Router();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { Product, Order, OrderItem } = require('../models');
 const sequelize = require('../config/database');
+const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 
 // @route   POST /api/payment/create-payment-intent
 // @desc    Create Stripe Payment Intent and save PENDING order in PostgreSQL
@@ -121,6 +122,98 @@ router.post('/create-payment-intent', async (req, res) => {
     await transaction.rollback();
     console.error('Error creating payment intent:', error);
     res.status(500).json({ error: 'Failed to initialize payment process.' });
+  }
+});
+
+// @route   GET /api/payment/orders
+// @desc    Get all orders with items (Admin only)
+// @access  Private/Admin
+router.get('/orders', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const orders = await Order.findAll({
+      order: [['createdAt', 'DESC']],
+      include: [
+        {
+          model: OrderItem,
+          as: 'items',
+          include: [
+            {
+              model: Product,
+              as: 'product',
+              attributes: ['name', 'code', 'images']
+            }
+          ]
+        }
+      ]
+    });
+    res.json(orders);
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+    res.status(500).json({ error: 'Failed to retrieve orders.' });
+  }
+});
+
+// @route   GET /api/payment/dashboard-stats
+// @desc    Get store sales metrics, order counts, and low stock products (Admin only)
+// @access  Private/Admin
+router.get('/dashboard-stats', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const totalOrders = await Order.count();
+    const paidCount = await Order.count({ where: { status: 'PAID' } });
+    const pendingCount = await Order.count({ where: { status: 'PENDING' } });
+    const failedCount = await Order.count({ where: { status: 'FAILED' } });
+
+    // Revenue calculation
+    const paidOrders = await Order.findAll({
+      where: { status: 'PAID' }
+    });
+    const totalRevenue = paidOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
+    // Low stock products logic
+    const allProducts = await Product.findAll();
+    const lowStockProducts = [];
+    for (const product of allProducts) {
+      let totalStock = 0;
+      if (product.colorStock) {
+        totalStock = Object.values(product.colorStock).reduce((sum, val) => sum + (parseInt(val, 10) || 0), 0);
+      }
+      if (totalStock === 0 && product.sizeStock) {
+        const sumValues = (obj) => {
+          if (!obj || typeof obj !== 'object') return 0;
+          return Object.values(obj).reduce((sum, val) => {
+            if (typeof val === 'object') {
+              return sum + sumValues(val);
+            }
+            return sum + (parseInt(val, 10) || 0);
+          }, 0);
+        };
+        totalStock = sumValues(product.sizeStock);
+      }
+      
+      if (totalStock <= 10) {
+        lowStockProducts.push({
+          id: product.id,
+          name: product.name,
+          code: product.code,
+          category: product.category,
+          totalStock
+        });
+      }
+    }
+
+    res.json({
+      metrics: {
+        totalRevenue,
+        totalOrders,
+        paidCount,
+        pendingCount,
+        failedCount
+      },
+      lowStockProducts
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    res.status(500).json({ error: 'Failed to retrieve dashboard metrics.' });
   }
 });
 
