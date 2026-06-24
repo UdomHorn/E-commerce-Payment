@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { Op } = require('sequelize');
 const Product = require('../models/Product');
 const { upload } = require('../config/cloudinary');
 
@@ -95,7 +96,17 @@ router.post(
 // @access  Public
 router.get('/', async (req, res) => {
   try {
+    const { search } = req.query;
+    let whereClause = {};
+
+    if (search) {
+      whereClause.name = {
+        [Op.iLike]: `%${search}%`
+      };
+    }
+
     const products = await Product.findAll({
+      where: whereClause,
       order: [['createdAt', 'DESC']]
     });
     res.json(products);
