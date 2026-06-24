@@ -6,7 +6,9 @@ import Footer from './Pages/Footer'
 import AdminUpload from './Pages/AdminUpload'
 import ProductDetail from './Pages/ProductDetail'
 import Checkout from '././Pages/Checkout'
+import Favorites from './Pages/Favorites'
 import { Routes, Route } from 'react-router-dom'
+import AuthModal from './assets/Components/AuthModal'
 
 function App() {
   return (
@@ -19,8 +21,10 @@ function App() {
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/Women" element={<Women />} />
         <Route path="/Men" element={<Men />} />
+        <Route path="/favorites" element={<Favorites />} />
       </Routes>
       <Footer />
+      <AuthModal />
     </div>
   )
 }

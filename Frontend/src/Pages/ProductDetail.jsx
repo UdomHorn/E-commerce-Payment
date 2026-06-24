@@ -6,12 +6,16 @@ import Size from '../assets/Components/Size';
 import ColorAvailable from '../assets/Components/ColorAvailable';
 import { useCart } from '../context/CartContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBookmark, faUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
+import { faUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
 import API_BASE from '../config';
+import { useFavorites } from '../context/FavoritesContext';
+import { useAuth } from '../context/AuthContext';
 
 const ProductDetail = () => {
   const { id } = useParams();
   const { addToCart } = useCart();
+  const { toggleFavorite, isFavorite } = useFavorites();
+  const { user, openAuthModal } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -22,7 +26,6 @@ const ProductDetail = () => {
   const [selectedColor, setSelectedColor] = useState('');
   const [qty, setQty] = useState(1);
   const [addedAlert, setAddedAlert] = useState(false);
-  const [isBookmarked, setIsBookmarked] = useState(false);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -259,10 +262,20 @@ const ProductDetail = () => {
               <h2 className="text-2xl font-bold text-gray-900">{name}</h2>
               <div className="flex gap-4 text-xl">
                 <button 
-                  onClick={() => setIsBookmarked(!isBookmarked)} 
-                  className={`cursor-pointer transition-colors duration-200 ${isBookmarked ? 'text-yellow-500' : 'text-gray-400 hover:text-black'}`}
+                  onClick={() => toggleFavorite(product)} 
+                  className={`cursor-pointer transition-colors duration-200 focus:outline-none ${isFavorite(product.id) ? 'text-red-500' : 'text-gray-400 hover:text-black'}`}
+                  aria-label="Favorite"
                 >
-                  <FontAwesomeIcon icon={faBookmark} />
+                  <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    fill={isFavorite(product.id) ? "currentColor" : "none"} 
+                    viewBox="0 0 24 24" 
+                    strokeWidth="1.5" 
+                    stroke="currentColor" 
+                    className="w-6 h-6"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+                  </svg>
                 </button>
                 <button className="cursor-pointer text-gray-400 hover:text-black transition-colors duration-200">
                   <FontAwesomeIcon icon={faUpRightFromSquare} />
@@ -270,6 +283,22 @@ const ProductDetail = () => {
               </div>
             </div>
             <div className="text-xl font-bold text-gray-700 mt-2">${price.toFixed(2)}</div>
+            
+            {/* If user is logged out, show a clean Sign In button below the price */}
+            {!user && (
+              <div className="mt-4 p-4 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Have an account?</p>
+                  <p className="text-xs text-gray-500 mt-0.5 font-normal">Sign in for a better checkout experience.</p>
+                </div>
+                <button
+                  onClick={openAuthModal}
+                  className="px-5 py-2.5 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
+                >
+                  Sign In
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Color Selector */}

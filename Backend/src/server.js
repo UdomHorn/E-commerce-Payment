@@ -106,6 +106,7 @@ app.use(express.urlencoded({ extended: true }));
 const productRoutes = require('./routes/productRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
+const authRoutes = require('./routes/authRoutes');
 
 // Basic health check route
 app.get('/api/health', (req, res) => {
@@ -116,6 +117,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/products', productRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/banners', bannerRoutes);
+app.use('/api/auth', authRoutes);
 
 // Test database connection and start server
 async function startServer() {
