@@ -96,7 +96,7 @@ const AdminUpload = () => {
     try {
       // Fetch stats
       const statsRes = await fetch(`${API_BASE}/api/payment/dashboard-stats`, {
-        headers: { Authorization: `Bearer ${token}` }
+        credentials: 'include'
       });
       if (!statsRes.ok) throw new Error('Failed to load dashboard metrics.');
       const statsData = await statsRes.json();
@@ -104,7 +104,7 @@ const AdminUpload = () => {
 
       // Fetch orders
       const ordersRes = await fetch(`${API_BASE}/api/payment/orders`, {
-        headers: { Authorization: `Bearer ${token}` }
+        credentials: 'include'
       });
       if (!ordersRes.ok) throw new Error('Failed to load orders.');
       const ordersData = await ordersRes.json();
@@ -353,9 +353,7 @@ const AdminUpload = () => {
 
       const response = await fetch(url, {
         method,
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
+        credentials: 'include',
         body: formData,
       });
 
@@ -440,9 +438,7 @@ const AdminUpload = () => {
     try {
       const response = await fetch(`${API_BASE}/api/products/${prodId}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        credentials: 'include'
       });
 
       if (response.ok) {
