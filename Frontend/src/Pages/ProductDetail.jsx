@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import Qty from '../assets/Components/Qty';
 import AddtoBag from '../assets/Components/AddtoBag';
 import Size from '../assets/Components/Size';
@@ -128,15 +129,20 @@ const ProductDetail = () => {
     }
   }, [selectedColor, selectedSize, product]);
 
+  // Auto-dismiss add to bag popup after 4 seconds
+  useEffect(() => {
+    if (!addedAlert) return;
+    const timer = setTimeout(() => {
+      setAddedAlert(false);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [addedAlert]);
+
   const handleAddToBag = () => {
     if (!product) return;
     
     addToCart(product, qty, selectedSize, selectedColor);
     setAddedAlert(true);
-    
-    setTimeout(() => {
-      setAddedAlert(false);
-    }, 3000);
   };
 
   if (loading) {
@@ -195,13 +201,44 @@ const ProductDetail = () => {
 
   return (
     <div className="p-2.5 pt-[64px] font-roboto w-[80%] max-md:w-full mx-auto text-lg relative">
-      {/* Toast Alert */}
-      {addedAlert && (
-        <div className="fixed top-20 right-6 z-50 bg-black border border-white/20 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-bounce">
-          <span className="text-emerald-400 font-bold">✓</span>
-          <span>Added {qty}x {name} ({selectedSize} / {selectedColor}) to your bag!</span>
-        </div>
-      )}
+      {/* Premium Toast Alert popup */}
+      <AnimatePresence>
+        {addedAlert && (
+          <motion.div
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            transition={{ type: 'tween', duration: 0.3 }}
+            className="fixed top-24 right-6 z-50 w-80 bg-white border border-black p-4 rounded-none shadow-md flex gap-3 text-black"
+          >
+            {/* Thumbnail Image */}
+            <div className="w-16 h-20 bg-gray-100 flex-shrink-0 border border-gray-200 rounded-none overflow-hidden">
+              <img src={images && images[0]} alt={name} className="w-full h-full object-cover" />
+            </div>
+
+            {/* Info and Action */}
+            <div className="flex-1 flex flex-col justify-between">
+              <div className="pr-4">
+                <div className="text-xs font-bold uppercase tracking-wider mb-1">
+                  Added to Bag
+                </div>
+                <h4 className="text-sm font-bold truncate">{name}</h4>
+                <p className="text-xs text-gray-600 mt-1">
+                  Size: <span className="font-medium text-black">{selectedSize}</span> | Color: <span className="font-medium text-black">{selectedColor}</span> | Qty: <span className="font-medium text-black">{qty}</span>
+                </p>
+              </div>
+
+              {/* Close Button */}
+              <button 
+                onClick={() => setAddedAlert(false)}
+                className="absolute top-3 right-3 text-black hover:opacity-70 transition-opacity cursor-pointer text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="sm:flex gap-12 mt-6">
         {/* Left Side: Images Carousel */}
@@ -283,22 +320,6 @@ const ProductDetail = () => {
               </div>
             </div>
             <div className="text-xl font-bold text-gray-700 mt-2">${price.toFixed(2)}</div>
-            
-            {/* If user is logged out, show a clean Sign In button below the price */}
-            {!user && (
-              <div className="mt-4 p-4 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">Have an account?</p>
-                  <p className="text-xs text-gray-500 mt-0.5 font-normal">Sign in for a better checkout experience.</p>
-                </div>
-                <button
-                  onClick={openAuthModal}
-                  className="px-5 py-2.5 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
-                >
-                  Sign In
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Color Selector */}
@@ -319,11 +340,11 @@ const ProductDetail = () => {
           {/* Qty Selector */}
           <Qty qty={qty} setQty={setQty} max={currentStock} />
 
-          {/* Product SKU & Description Info */}
+          {/* Product ID & Description Info */}
           <div className="border-t pt-6 space-y-2.5">
             {code && (
               <div className="text-sm text-gray-500 font-medium">
-                SKU: <span className="text-gray-900 font-bold">{code}</span>
+                ID: <span className="text-gray-900 font-bold">{code}</span>
               </div>
             )}
             {description && (
@@ -340,6 +361,22 @@ const ProductDetail = () => {
             disabled={isOutOfStock} 
             label={isOutOfStock ? 'Out of Stock' : 'Add to bag'} 
           />
+
+          {/* If user is logged out, show a clean Sign In button below the Add to Bag button */}
+          {!user && (
+            <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Have an account?</p>
+                <p className="text-xs text-gray-500 mt-0.5 font-normal">Sign in for a better checkout experience.</p>
+              </div>
+              <button
+                onClick={openAuthModal}
+                className="px-5 py-2.5 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
+              >
+                Sign In
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

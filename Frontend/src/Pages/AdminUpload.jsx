@@ -1038,7 +1038,7 @@ const AdminUpload = () => {
                                 <p className="font-bold text-xs text-gray-900 truncate" title={p.name}>
                                   {p.name}
                                 </p>
-                                <p className="text-[10px] text-gray-400 mt-0.5">SKU: {p.code}</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">ID: {p.code}</p>
                               </div>
                               <span className={`px-2 py-1 rounded text-xs font-bold ${p.totalStock === 0
                                   ? 'bg-rose-100 text-rose-800'
@@ -1103,7 +1103,7 @@ const AdminUpload = () => {
                         </span>
                         <input
                           type="text"
-                          placeholder="Search products by name or SKU/code..."
+                          placeholder="Search products by name or ID/code..."
                           value={adminSearchQuery}
                           onChange={(e) => setAdminSearchQuery(e.target.value)}
                           className="w-full pl-10 pr-10 py-3 bg-gray-50 border border-gray-200 focus:border-black rounded-lg text-sm text-black placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-black transition"
@@ -1157,7 +1157,7 @@ const AdminUpload = () => {
                           <tr>
                             <th className="p-4 w-[80px]">Preview</th>
                             <th className="p-4">Name</th>
-                            <th className="p-4">SKU / Code</th>
+                            <th className="p-4">ID / Code</th>
                             <th className="p-4">Category</th>
                             <th className="p-4">Price</th>
                             <th className="p-4 text-center">Actions</th>
@@ -1234,7 +1234,7 @@ const AdminUpload = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Product SKU/Code (Unique)</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Product ID/Code (Unique)</label>
                       <input
                         type="text"
                         name="code"
@@ -1937,7 +1937,7 @@ const AdminUpload = () => {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm text-gray-900 truncate">{item.product?.name || 'Deleted Product'}</p>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      SKU: {item.product?.code || 'N/A'} | Color: <span className="font-semibold uppercase">{item.selectedColor}</span> | Size: <span className="font-semibold">{item.selectedSize}</span>
+                      ID: {item.product?.code || 'N/A'} | Color: <span className="font-semibold uppercase">{item.selectedColor}</span> | Size: <span className="font-semibold">{item.selectedSize}</span>
                     </p>
                   </div>
                   <div className="text-right">

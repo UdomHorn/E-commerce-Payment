@@ -17,12 +17,25 @@ const User = sequelize.define('User', {
   },
   password: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true, // Nullable for Google OAuth users
   },
   role: {
     type: DataTypes.STRING,
     allowNull: false,
     defaultValue: 'user', // user, admin
+  },
+  googleId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true,
+  },
+  otpCode: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  otpExpires: {
+    type: DataTypes.DATE,
+    allowNull: true,
   },
 }, {
   timestamps: true,

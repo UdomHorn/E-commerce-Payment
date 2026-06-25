@@ -91,6 +91,33 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const googleLogin = async (credential) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/google-login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ credential }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Failed to sign in with Google.' };
+      }
+
+      setUser(data.user);
+      setToken('cookie_authenticated');
+      setAuthModalOpen(false); // Auto close modal on successful login
+      return { success: true };
+    } catch (err) {
+      console.error('Google login error:', err);
+      return { success: false, error: 'Network error. Please try again.' };
+    }
+  };
+
   const logout = async () => {
     try {
       await fetch(`${API_BASE}/api/auth/logout`, {
@@ -119,6 +146,7 @@ export const AuthProvider = ({ children }) => {
         closeAuthModal,
         login,
         register,
+        googleLogin,
         logout,
       }}
     >
