@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { Product, Order, OrderItem } = require('../models');
+const { Product, Order, OrderItem, Notification } = require('../models');
 const sequelize = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { sendTelegramNotification } = require('../utils/telegram');
 
 const jwt = require('jsonwebtoken');
 
@@ -37,7 +38,7 @@ router.post('/create-payment-intent', async (req, res) => {
       }
 
       const itemPrice = product.price;
-      
+
       // Validate size stock if it is set in database
       if (product.sizeStock && item.selectedSize) {
         let availableSizeStock;
@@ -49,8 +50,8 @@ router.post('/create-payment-intent', async (req, res) => {
 
         if (availableSizeStock !== undefined && parseInt(availableSizeStock, 10) < item.quantity) {
           await transaction.rollback();
-          return res.status(400).json({ 
-            error: `Insufficient stock for "${product.name}" (Size: ${item.selectedSize}). Available: ${availableSizeStock}` 
+          return res.status(400).json({
+            error: `Insufficient stock for "${product.name}" (Size: ${item.selectedSize}). Available: ${availableSizeStock}`
           });
         }
       }
@@ -60,8 +61,8 @@ router.post('/create-payment-intent', async (req, res) => {
         const availableColorStock = product.colorStock[item.selectedColor];
         if (availableColorStock !== undefined && parseInt(availableColorStock, 10) < item.quantity) {
           await transaction.rollback();
-          return res.status(400).json({ 
-            error: `Insufficient stock for "${product.name}" (Color: ${item.selectedColor}). Available: ${availableColorStock}` 
+          return res.status(400).json({
+            error: `Insufficient stock for "${product.name}" (Color: ${item.selectedColor}). Available: ${availableColorStock}`
           });
         }
       }
@@ -204,7 +205,7 @@ router.get('/dashboard-stats', authMiddleware, adminMiddleware, async (req, res)
         };
         totalStock = sumValues(product.sizeStock);
       }
-      
+
       if (totalStock <= 10) {
         lowStockProducts.push({
           id: product.id,
@@ -316,15 +317,35 @@ router.get('/order/:id', async (req, res) => {
                       const colorSizeStock = { ...sizeStock[item.selectedColor] };
                       const currentSizeStock = parseInt(colorSizeStock[item.selectedSize], 10);
                       if (!isNaN(currentSizeStock)) {
-                        colorSizeStock[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+                        const newStock = Math.max(0, currentSizeStock - item.quantity);
+                        colorSizeStock[item.selectedSize] = newStock;
                         sizeStock[item.selectedColor] = colorSizeStock;
                         product.sizeStock = sizeStock;
+
+                        if (newStock <= 3) {
+                          await Notification.create({
+                            type: 'LOW_STOCK',
+                            title: 'Low Stock Warning',
+                            message: `Product "${product.name}" (Color: ${item.selectedColor}, Size: ${item.selectedSize}) is low on stock: only ${newStock} items left!`,
+                            metadata: { productId: product.id }
+                          }, { transaction: t });
+                        }
                       }
                     } else {
                       const currentSizeStock = parseInt(sizeStock[item.selectedSize], 10);
                       if (!isNaN(currentSizeStock)) {
-                        sizeStock[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+                        const newStock = Math.max(0, currentSizeStock - item.quantity);
+                        sizeStock[item.selectedSize] = newStock;
                         product.sizeStock = sizeStock;
+
+                        if (newStock <= 3) {
+                          await Notification.create({
+                            type: 'LOW_STOCK',
+                            title: 'Low Stock Warning',
+                            message: `Product "${product.name}" (Size: ${item.selectedSize}) is low on stock: only ${newStock} items left!`,
+                            metadata: { productId: product.id }
+                          }, { transaction: t });
+                        }
                       }
                     }
                   }
@@ -334,8 +355,18 @@ router.get('/order/:id', async (req, res) => {
                     const colorStock = { ...product.colorStock };
                     const currentColorStock = parseInt(colorStock[item.selectedColor], 10);
                     if (!isNaN(currentColorStock)) {
-                      colorStock[item.selectedColor] = Math.max(0, currentColorStock - item.quantity);
+                      const newStock = Math.max(0, currentColorStock - item.quantity);
+                      colorStock[item.selectedColor] = newStock;
                       product.colorStock = colorStock;
+
+                      if (newStock <= 3) {
+                        await Notification.create({
+                          type: 'LOW_STOCK',
+                          title: 'Low Stock Warning',
+                          message: `Product "${product.name}" (Color: ${item.selectedColor}) is low on stock: only ${newStock} items left!`,
+                          metadata: { productId: product.id }
+                        }, { transaction: t });
+                      }
                     }
                   }
 
@@ -345,7 +376,18 @@ router.get('/order/:id', async (req, res) => {
               }
               // Update status on the local in-memory order object
               order.status = 'PAID';
+
+              // Create notification for admin
+              await Notification.create({
+                type: 'NEW_ORDER',
+                title: 'New Order Received',
+                message: `Order #${order.id} paid by ${order.customerEmail} for $${order.totalAmount.toFixed(2)}`,
+                metadata: { orderId: order.id }
+              }, { transaction: t });
+
               console.log(`✅ Fallback: Order #${order.id} status synced to PAID successfully.`);
+              // Send Telegram notification
+              sendTelegramNotification(order.id);
             }
           });
         }
@@ -358,7 +400,7 @@ router.get('/order/:id', async (req, res) => {
     // If order has userId and is requested by a logged-in user, ensure it matches.
     // If it's a guest order, allow retrieval matching customerEmail parameter.
     let isAuthorized = false;
-    
+
     // Check if token exists
     const token = req.cookies?.authToken || (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : null);
     if (token) {
@@ -390,4 +432,30 @@ router.get('/order/:id', async (req, res) => {
   }
 });
 
+// @route   PUT /api/payment/orders/:id/fulfillment
+// @desc    Update order fulfillment status (Admin only)
+// @access  Private/Admin
+router.put('/orders/:id/fulfillment', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { fulfillmentStatus } = req.body;
+    if (!['Unfulfilled', 'Shipped', 'Delivered'].includes(fulfillmentStatus)) {
+      return res.status(400).json({ error: 'Invalid fulfillment status value.' });
+    }
+
+    const order = await Order.findByPk(req.params.id);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    order.fulfillmentStatus = fulfillmentStatus;
+    await order.save();
+
+    res.json({ message: 'Order fulfillment status updated successfully.', order });
+  } catch (error) {
+    console.error('Error updating order fulfillment status:', error);
+    res.status(500).json({ error: 'Failed to update order fulfillment status.' });
+  }
+});
+
 module.exports = router;
+

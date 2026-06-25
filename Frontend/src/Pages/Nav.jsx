@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faBars, faMagnifyingGlass, faHeart, faBagShopping, faXmark, faSpinner } from '@fortawesome/free-solid-svg-icons'
+import { faBars, faMagnifyingGlass, faHeart, faBagShopping, faXmark, faSpinner, faBell, faTriangleExclamation, faCircleExclamation } from '@fortawesome/free-solid-svg-icons'
 import { motion, AnimatePresence } from "framer-motion"
 import logo from '../assets/Images/logo.png'
 import { Link, useNavigate } from 'react-router-dom'
@@ -23,6 +23,118 @@ const Nav = () => {
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const inputRef = useRef(null);
   const navigate = useNavigate();
+
+  // Admin Notification States
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef(null);
+
+  // Polling notifications for admin
+  useEffect(() => {
+    if (user?.role !== 'admin') {
+      setNotifications([]);
+      return;
+    }
+
+    const fetchNotifications = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/notifications`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setNotifications(data);
+        }
+      } catch (err) {
+        console.error('Error fetching admin notifications:', err);
+      }
+    };
+
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 15000); // Poll every 15s
+
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // Click outside to close notifications dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const markAsRead = async (id, e) => {
+    if (e) e.stopPropagation();
+    try {
+      const response = await fetch(`${API_BASE}/api/notifications/${id}/read`, {
+        method: 'PUT',
+        credentials: 'include'
+      });
+      if (response.ok) {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+      }
+    } catch (err) {
+      console.error('Error marking notification as read:', err);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/notifications/read-all`, {
+        method: 'PUT',
+        credentials: 'include'
+      });
+      if (response.ok) {
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      }
+    } catch (err) {
+      console.error('Error marking all notifications as read:', err);
+    }
+  };
+
+  const handleNotificationClick = async (notif) => {
+    if (!notif.isRead) {
+      await markAsRead(notif.id);
+    }
+    if (notif.type === 'LOW_STOCK' && notif.metadata && notif.metadata.productId) {
+      localStorage.setItem('adminRedirectProductId', notif.metadata.productId);
+    } else if (notif.metadata && notif.metadata.orderId) {
+      localStorage.setItem('adminRedirectOrderId', notif.metadata.orderId);
+    }
+    setShowNotifications(false);
+    navigate('/admin/upload');
+  };
+
+  const getNotificationIcon = (type) => {
+    switch (type) {
+      case 'LOW_STOCK':
+        return <FontAwesomeIcon icon={faTriangleExclamation} className="text-amber-500 text-base mt-0.5" />;
+      case 'PAYMENT_FAILED':
+        return <FontAwesomeIcon icon={faCircleExclamation} className="text-red-500 text-base mt-0.5" />;
+      default: // NEW_ORDER
+        return <FontAwesomeIcon icon={faBagShopping} className="text-blue-500 text-base mt-0.5" />;
+    }
+  };
+
+  const formatRelativeTime = (dateStr) => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   // Focus input and fetch initial products when search overlay opens
   useEffect(() => {
@@ -101,7 +213,7 @@ const Nav = () => {
 
   return (
     <div className='fixed w-full top-0 left-0 z-10'>
-      <div className='w-full overflow-hidden bg-white flex justify-center items-center'>
+      <div className='w-full bg-white flex justify-center items-center'>
         <div className='flex justify-between w-[80%] items-center p-2.5 max-md:w-full '>
           <div className='flex gap-2 items-center text-2xl '>
             <button
@@ -125,6 +237,16 @@ const Nav = () => {
           </div>
 
           <div className='flex text-xl gap-5 items-center'>
+            <style>{`
+              .no-scrollbar::-webkit-scrollbar {
+                display: none;
+              }
+              .no-scrollbar {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+              }
+            `}</style>
+
             <button
               onClick={() => setShowSearch(true)}
               className='cursor-pointer p-1 hover:text-gray-600 transition-colors focus:outline-none'
@@ -132,6 +254,93 @@ const Nav = () => {
             >
               <FontAwesomeIcon icon={faMagnifyingGlass} />
             </button>
+
+            {user?.role === 'admin' && (
+              <div className="relative flex items-center justify-center" ref={notifRef}>
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center focus:outline-none"
+                  aria-label="Notifications"
+                >
+                  <FontAwesomeIcon icon={faBell} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-white leading-none font-roboto animate-pulse">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Dropdown Panel */}
+                <AnimatePresence>
+                  {showNotifications && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 15, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 top-8 w-[360px] bg-white/95 backdrop-blur-md border border-gray-255 rounded-xl shadow-2xl overflow-hidden z-50 font-roboto"
+                    >
+                      {/* Header */}
+                      <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+                        <span className="font-semibold text-sm text-gray-900">Notifications</span>
+                        {unreadCount > 0 && (
+                          <button
+                            onClick={markAllAsRead}
+                            className="text-xs text-black hover:underline font-bold cursor-pointer"
+                          >
+                            Mark all as read
+                          </button>
+                        )}
+                      </div>
+
+                      {/* List */}
+                      <div className="max-h-[450px] overflow-y-auto no-scrollbar divide-y divide-gray-50">
+                        {notifications.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                            <FontAwesomeIcon icon={faBell} className="text-gray-200 text-3xl mb-2" />
+                            <p className="text-sm font-semibold text-gray-800">All caught up!</p>
+                            <p className="text-xs text-gray-400 mt-0.5">No new notifications received.</p>
+                          </div>
+                        ) : (
+                          notifications.map((notif) => (
+                            <div
+                              key={notif.id}
+                              onClick={() => handleNotificationClick(notif)}
+                              className={`p-3.5 flex gap-3 hover:bg-gray-50/80 cursor-pointer transition-colors text-left ${
+                                !notif.isRead ? 'bg-blue-50/20' : ''
+                              }`}
+                            >
+                              <div className="flex-shrink-0 flex items-start">
+                                {getNotificationIcon(notif.type)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start">
+                                  <p className={`text-[13px] font-bold truncate ${!notif.isRead ? 'text-gray-900' : 'text-gray-600'}`}>
+                                    {notif.title}
+                                  </p>
+                                  <span className="text-[11px] text-gray-400 whitespace-nowrap ml-2">
+                                    {formatRelativeTime(notif.createdAt)}
+                                  </span>
+                                </div>
+                                <p className={`text-[12px] mt-1.5 line-clamp-2 leading-relaxed ${!notif.isRead ? 'text-gray-800 font-medium' : 'text-gray-500'}`}>
+                                  {notif.message}
+                                </p>
+                              </div>
+                              {!notif.isRead && (
+                                <div className="flex items-center">
+                                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
             <Link
               to="/favorites"
               className='cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center'

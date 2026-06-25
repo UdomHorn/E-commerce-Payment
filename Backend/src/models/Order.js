@@ -21,6 +21,11 @@ const Order = sequelize.define('Order', {
     allowNull: false,
     defaultValue: 'PENDING', // PENDING, PAID, FAILED, CANCELLED
   },
+  fulfillmentStatus: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: 'Unfulfilled', // Unfulfilled, Shipped, Delivered
+  },
   totalAmount: {
     type: DataTypes.FLOAT,
     allowNull: false,

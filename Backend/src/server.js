@@ -4,7 +4,8 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const sequelize = require('./config/database');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { Order, OrderItem, Product } = require('./models');
+const { Order, OrderItem, Product, Notification } = require('./models');
+const { sendTelegramNotification } = require('./utils/telegram');
 const ensureDatabaseExists = require('./config/initDb');
 require('dotenv').config();
 
@@ -60,6 +61,14 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
             order.status = 'PAID';
             await order.save({ transaction: t });
 
+            // Create notification for admin
+            await Notification.create({
+              type: 'NEW_ORDER',
+              title: 'New Order Received',
+              message: `Order #${order.id} paid by ${order.customerEmail} for $${order.totalAmount.toFixed(2)}`,
+              metadata: { orderId: order.id }
+            }, { transaction: t });
+
             for (const item of order.items) {
               const product = await Product.findByPk(item.productId, { transaction: t });
               if (product) {
@@ -70,15 +79,35 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                     const colorSizeStock = { ...sizeStock[item.selectedColor] };
                     const currentSizeStock = parseInt(colorSizeStock[item.selectedSize], 10);
                     if (!isNaN(currentSizeStock)) {
-                      colorSizeStock[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+                      const newStock = Math.max(0, currentSizeStock - item.quantity);
+                      colorSizeStock[item.selectedSize] = newStock;
                       sizeStock[item.selectedColor] = colorSizeStock;
                       product.sizeStock = sizeStock;
+
+                      if (newStock <= 3) {
+                        await Notification.create({
+                          type: 'LOW_STOCK',
+                          title: 'Low Stock Warning',
+                          message: `Product "${product.name}" (Color: ${item.selectedColor}, Size: ${item.selectedSize}) is low on stock: only ${newStock} items left!`,
+                          metadata: { productId: product.id }
+                        }, { transaction: t });
+                      }
                     }
                   } else {
                     const currentSizeStock = parseInt(sizeStock[item.selectedSize], 10);
                     if (!isNaN(currentSizeStock)) {
-                      sizeStock[item.selectedSize] = Math.max(0, currentSizeStock - item.quantity);
+                      const newStock = Math.max(0, currentSizeStock - item.quantity);
+                      sizeStock[item.selectedSize] = newStock;
                       product.sizeStock = sizeStock;
+
+                      if (newStock <= 3) {
+                        await Notification.create({
+                          type: 'LOW_STOCK',
+                          title: 'Low Stock Warning',
+                          message: `Product "${product.name}" (Size: ${item.selectedSize}) is low on stock: only ${newStock} items left!`,
+                          metadata: { productId: product.id }
+                        }, { transaction: t });
+                      }
                     }
                   }
                 }
@@ -88,8 +117,18 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                   const colorStock = { ...product.colorStock };
                   const currentColorStock = parseInt(colorStock[item.selectedColor], 10);
                   if (!isNaN(currentColorStock)) {
-                    colorStock[item.selectedColor] = Math.max(0, currentColorStock - item.quantity);
+                    const newStock = Math.max(0, currentColorStock - item.quantity);
+                    colorStock[item.selectedColor] = newStock;
                     product.colorStock = colorStock;
+
+                    if (newStock <= 3) {
+                      await Notification.create({
+                        type: 'LOW_STOCK',
+                        title: 'Low Stock Warning',
+                        message: `Product "${product.name}" (Color: ${item.selectedColor}) is low on stock: only ${newStock} items left!`,
+                        metadata: { productId: product.id }
+                      }, { transaction: t });
+                    }
                   }
                 }
 
@@ -99,12 +138,46 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
             }
           });
           console.log(`✅ Order #${order.id} status updated to PAID and stock levels deducted successfully.`);
+          // Send Telegram notification
+          sendTelegramNotification(order.id);
         }
       } else {
         console.warn(`⚠️ Order for payment intent ${paymentIntent.id} not found.`);
       }
     } catch (error) {
       console.error('❌ Error processing payment success webhook:', error);
+      return res.status(500).json({ error: 'DB update error.' });
+    }
+  } else if (event.type === 'payment_intent.payment_failed') {
+    const paymentIntent = event.data.object;
+    console.log(`❌ PaymentIntent for ${paymentIntent.id} failed.`);
+
+    try {
+      const order = await Order.findOne({
+        where: { stripePaymentIntentId: paymentIntent.id }
+      });
+
+      if (order) {
+        if (order.status !== 'FAILED') {
+          await sequelize.transaction(async (t) => {
+            order.status = 'FAILED';
+            await order.save({ transaction: t });
+
+            // Create notification for admin
+            await Notification.create({
+              type: 'PAYMENT_FAILED',
+              title: 'Payment Failed',
+              message: `Stripe payment failed for Order #${order.id} (customer: ${order.customerEmail})`,
+              metadata: { orderId: order.id }
+            }, { transaction: t });
+          });
+          console.log(`✅ Order #${order.id} status updated to FAILED due to failed PaymentIntent.`);
+        }
+      } else {
+        console.warn(`⚠️ Order for failed payment intent ${paymentIntent.id} not found.`);
+      }
+    } catch (error) {
+      console.error('❌ Error processing payment failure webhook:', error);
       return res.status(500).json({ error: 'DB update error.' });
     }
   }
@@ -121,6 +194,7 @@ const productRoutes = require('./routes/productRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const bannerRoutes = require('./routes/bannerRoutes');
 const authRoutes = require('./routes/authRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 // Basic health check route
 app.get('/api/health', (req, res) => {
@@ -132,6 +206,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/banners', bannerRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Test database connection and start server
 async function startServer() {
@@ -145,8 +220,8 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('✅ Connection to PostgreSQL has been established successfully.');
 
-    // Sync database models (alter table if schema changes)
-    await sequelize.sync({ alter: true });
+    // Sync database models
+    await sequelize.sync();
     console.log('✅ Database models synchronized with schema changes.');
 
     app.listen(PORT, () => {
