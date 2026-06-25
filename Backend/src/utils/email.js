@@ -28,6 +28,10 @@ const sendOTPEmail = async (email, otp) => {
       connectionTimeout: 5000, // 5 seconds connection timeout
       greetingTimeout: 5000,   // 5 seconds greeting timeout
       socketTimeout: 5000,     // 5 seconds socket timeout
+      // Custom DNS lookup to force IPv4 (family: 4) and prevent IPv6 connection hangs/errors
+      lookup: (hostname, options, callback) => {
+        return dns.lookup(hostname, { ...options, family: 4 }, callback);
+      }
     });
 
     const mailOptions = {
