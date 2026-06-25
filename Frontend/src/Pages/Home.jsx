@@ -1,24 +1,15 @@
 import React, { useEffect, useState } from 'react'
-import img1 from '../assets/Images/TEN11 - Puppy Love Collection App Banner.jpg'
-import img2 from '../assets/Images/TEN11 - Grand Prix App banner.jpg'
-import img3 from '../assets/Images/8J6A0448.jpg'
-import img4 from '../assets/Images/8J6A0460.jpg'
 import { Link } from 'react-router-dom'
 import Collection from '../assets/Components/Collection'
 import HightLightCard from '../assets/Components/HightLightCard'
 import API_BASE from '../config'
 
-const defaultBanners = [
-  { imageUrl: img1, title: 'Puppy Love Collection' },
-  { imageUrl: img2, title: 'Grand Prix' }
-]
-
 const Home = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [products, setProducts] = useState([]);
-  const [banners, setBanners] = useState(defaultBanners);
-  const [womenBanner, setWomenBanner] = useState(img3);
-  const [menBanner, setMenBanner] = useState(img4);
+  const [banners, setBanners] = useState([]);
+  const [womenBanner, setWomenBanner] = useState(null);
+  const [menBanner, setMenBanner] = useState(null);
 
   // Fetch Category Banners
   useEffect(() => {
