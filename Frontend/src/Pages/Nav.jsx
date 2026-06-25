@@ -634,7 +634,7 @@ const Nav = () => {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Search products by name or SKU/code..."
+                  placeholder="Search products by name or ID/code..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-transparent text-2xl font-light text-gray-800 placeholder-gray-400 pb-3 pl-8 border-b border-gray-300 focus:border-black focus:outline-none transition-colors"
@@ -660,7 +660,7 @@ const Nav = () => {
                       !loading && (
                         <div className="text-center py-16">
                           <p className="text-lg text-gray-500 mb-2">No products found for "{searchQuery}"</p>
-                          <p className="text-sm text-gray-400">Try searching for another product name or SKU/code.</p>
+                          <p className="text-sm text-gray-400">Try searching for another product name or ID/code.</p>
                         </div>
                       )
                     ) : (
