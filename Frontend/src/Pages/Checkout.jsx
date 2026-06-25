@@ -13,7 +13,7 @@ const CheckoutForm = ({ totalAmount, onSuccess, onError }) => {
   const stripe = useStripe();
   const elements = useElements();
   const { cart } = useCart();
-  
+
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -86,7 +86,7 @@ const CheckoutForm = ({ totalAmount, onSuccess, onError }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-6 text-black">
       <h3 className="text-xl font-bold border-b pb-3 text-gray-800">Billing & Shipping Details</h3>
-      
+
       <div>
         <label className="block text-sm font-semibold text-gray-600 mb-1">Full Name</label>
         <input
@@ -124,7 +124,7 @@ const CheckoutForm = ({ totalAmount, onSuccess, onError }) => {
       </div>
 
       <h3 className="text-xl font-bold border-b pt-4 pb-3 text-gray-800">Credit Card Information</h3>
-      
+
       <div className="p-4 border rounded-lg bg-gray-50">
         <CardElement
           options={{
@@ -147,9 +147,8 @@ const CheckoutForm = ({ totalAmount, onSuccess, onError }) => {
       <button
         type="submit"
         disabled={loading || !stripe}
-        className={`w-full py-4 mt-6 bg-black text-white font-bold rounded-lg shadow-md hover:opacity-90 transition flex items-center justify-center gap-2 ${
-          loading ? 'opacity-50 cursor-not-allowed' : ''
-        }`}
+        className={`w-full py-4 mt-6 bg-black text-white font-bold rounded-lg shadow-md hover:opacity-90 transition flex items-center justify-center gap-2 ${loading ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
       >
         {loading ? (
           <>
@@ -219,7 +218,7 @@ const Checkout = () => {
     return (
       <div className="min-h-screen bg-white text-black font-roboto pt-[64px] pb-16 flex flex-col items-center justify-center p-6 print:pt-0 print:pb-0">
         <div className="w-full max-w-2xl bg-white border border-gray-150 rounded-2xl shadow-lg p-8 print:border-0 print:shadow-none print:p-0">
-          
+
           {/* Success Checkmark & Header (hidden in print) */}
           <div className="text-center mb-8 print:hidden">
             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl font-extrabold mx-auto mb-4 animate-pulse">
@@ -254,8 +253,8 @@ const Checkout = () => {
             <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 text-sm rounded-lg text-center mb-6">
               <p className="font-bold mb-1">Failed to load detailed receipt</p>
               <p className="text-xs">{receiptError}</p>
-              <button 
-                onClick={() => window.location.reload()} 
+              <button
+                onClick={() => window.location.reload()}
                 className="mt-3 px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition"
               >
                 Retry
@@ -277,13 +276,12 @@ const Checkout = () => {
                 </div>
                 <div>
                   <p className="text-gray-400 font-bold uppercase tracking-wider">Status</p>
-                  <span className={`inline-block px-2.5 py-0.5 mt-0.5 rounded-[4px] text-[10px] font-bold uppercase border ${
-                    receiptDetails.status === 'PAID'
+                  <span className={`inline-block px-2.5 py-0.5 mt-0.5 rounded-[4px] text-[10px] font-bold uppercase border ${receiptDetails.status === 'PAID'
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
                       : receiptDetails.status === 'PENDING'
-                      ? 'bg-amber-50 text-amber-800 border-amber-100'
-                      : 'bg-rose-50 text-rose-800 border-rose-100'
-                  }`}>
+                        ? 'bg-amber-50 text-amber-800 border-amber-100'
+                        : 'bg-rose-50 text-rose-800 border-rose-100'
+                    }`}>
                     {receiptDetails.status}
                   </span>
                 </div>
@@ -300,10 +298,10 @@ const Checkout = () => {
                   {receiptDetails.items?.map((item, idx) => (
                     <div key={idx} className="flex gap-4 items-center">
                       <div className="w-12 h-16 overflow-hidden rounded bg-gray-50 border flex-shrink-0 print:hidden">
-                        <img 
-                          src={item.product?.images?.[0] || 'https://via.placeholder.com/100x120'} 
-                          alt={item.product?.name || 'Product'} 
-                          className="w-full h-full object-cover" 
+                        <img
+                          src={item.product?.images?.[0] || 'https://via.placeholder.com/100x120'}
+                          alt={item.product?.name || 'Product'}
+                          className="w-full h-full object-cover"
                         />
                       </div>
                       <div className="flex-grow min-w-0">
@@ -365,9 +363,9 @@ const Checkout = () => {
               </svg>
               Print Receipt
             </button>
-            
-            <Link 
-              to="/" 
+
+            <Link
+              to="/"
               className="px-8 py-3 bg-black text-white hover:opacity-90 font-bold rounded-lg text-sm text-center transition flex items-center justify-center"
             >
               Continue Shopping
@@ -417,11 +415,10 @@ const Checkout = () => {
                     <button
                       onClick={() => updateQuantity(item.id, item.selectedSize, item.selectedColor, item.quantity + 1)}
                       disabled={item.maxStock > 0 && item.quantity >= item.maxStock}
-                      className={`w-8 h-8 bg-gray-100 flex items-center justify-center font-semibold rounded transition ${
-                        item.maxStock > 0 && item.quantity >= item.maxStock
+                      className={`w-8 h-8 bg-gray-100 flex items-center justify-center font-semibold rounded transition ${item.maxStock > 0 && item.quantity >= item.maxStock
                           ? 'opacity-40 cursor-not-allowed'
                           : 'hover:bg-gray-200 cursor-pointer'
-                      }`}
+                        }`}
                     >
                       +
                     </button>

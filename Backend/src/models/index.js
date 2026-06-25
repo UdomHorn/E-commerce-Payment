@@ -4,6 +4,7 @@ const OrderItem = require('./OrderItem');
 const Banner = require('./Banner');
 const CategoryBanner = require('./CategoryBanner');
 const User = require('./User');
+const Notification = require('./Notification');
 
 // Define associations
 Order.hasMany(OrderItem, { 
@@ -41,5 +42,7 @@ module.exports = {
   Banner,
   CategoryBanner,
   User,
+  Notification,
 };
+
 

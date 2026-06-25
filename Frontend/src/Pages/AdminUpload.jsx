@@ -17,6 +17,7 @@ const AdminUpload = () => {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState('');
   const [selectedOrderForModal, setSelectedOrderForModal] = useState(null);
+  const [timeFilter, setTimeFilter] = useState('All'); // 'Today', '7days', '30days', 'All'
 
   // --- Admin Product Management States ---
   const [dbProducts, setDbProducts] = useState([]);
@@ -37,7 +38,7 @@ const AdminUpload = () => {
   });
   const [colorsList, setColorsList] = useState([]); // Array of { color: string, enabled: boolean, sizeStock: object }
   const [newColorName, setNewColorName] = useState('');
-  
+
   const [cardImage, setCardImage] = useState(null);
   const [cardPreview, setCardPreview] = useState('');
   const [detailImages, setDetailImages] = useState([]);
@@ -117,6 +118,157 @@ const AdminUpload = () => {
     }
   };
 
+  const updateFulfillmentStatus = async (orderId, newFulfillmentStatus) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/payment/orders/${orderId}/fulfillment`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ fulfillmentStatus: newFulfillmentStatus })
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to update fulfillment status.');
+      }
+
+      setOrdersList(prev => prev.map(order => 
+        order.id === orderId 
+          ? { ...order, fulfillmentStatus: newFulfillmentStatus } 
+          : order
+      ));
+
+      setSelectedOrderForModal(prev => prev && prev.id === orderId 
+        ? { ...prev, fulfillmentStatus: newFulfillmentStatus } 
+        : prev
+      );
+
+      setMessage({ type: 'success', text: 'Order fulfillment status updated successfully!' });
+      
+      // Auto-clear success message after 3 seconds
+      setTimeout(() => {
+        setMessage({ type: '', text: '' });
+      }, 3000);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: err.message || 'Something went wrong.' });
+    }
+  };
+
+  // Helper to filter and compute metrics based on timeFilter
+  const getFilteredMetricsAndOrders = () => {
+    if (!ordersList || ordersList.length === 0) {
+      return {
+        filteredOrders: [],
+        metrics: {
+          totalRevenue: 0,
+          totalOrders: 0,
+          paidCount: 0,
+          pendingCount: 0,
+          aov: 0
+        }
+      };
+    }
+
+    const now = new Date();
+    let cutoffDate = null;
+
+    if (timeFilter === 'Today') {
+      cutoffDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    } else if (timeFilter === '7days') {
+      cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (timeFilter === '30days') {
+      cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    const filteredOrders = cutoffDate 
+      ? ordersList.filter(order => new Date(order.createdAt) >= cutoffDate)
+      : ordersList;
+
+    let totalRevenue = 0;
+    let totalOrders = filteredOrders.length;
+    let paidCount = 0;
+    let pendingCount = 0;
+
+    filteredOrders.forEach(order => {
+      if (order.status === 'PAID') {
+        totalRevenue += order.totalAmount;
+        paidCount++;
+      } else if (order.status === 'PENDING') {
+        pendingCount++;
+      }
+    });
+
+    const aov = paidCount > 0 ? totalRevenue / paidCount : 0;
+
+    return {
+      filteredOrders,
+      metrics: {
+        totalRevenue,
+        totalOrders,
+        paidCount,
+        pendingCount,
+        aov
+      }
+    };
+  };
+
+  const { filteredOrders, metrics: activeMetrics } = getFilteredMetricsAndOrders();
+
+  const getChartData = () => {
+    const dataPoints = [];
+    const now = new Date();
+    
+    let daysToInclude = 7;
+    if (timeFilter === 'Today') daysToInclude = 1;
+    else if (timeFilter === '7days') daysToInclude = 7;
+    else if (timeFilter === '30days') daysToInclude = 30;
+    else if (timeFilter === 'All') daysToInclude = 30; // default to 30 days for visual trends
+
+    if (daysToInclude === 1) {
+      for (let i = 7; i >= 0; i--) {
+        const time = new Date(now.getTime() - i * 3 * 60 * 60 * 1000);
+        const label = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        const startTime = now.getTime() - (i + 1) * 3 * 60 * 60 * 1000;
+        const endTime = now.getTime() - i * 3 * 60 * 60 * 1000;
+        const revenue = ordersList
+          .filter(order => order.status === 'PAID')
+          .filter(order => {
+            const t = new Date(order.createdAt).getTime();
+            return t >= startTime && t < endTime;
+          })
+          .reduce((sum, order) => sum + order.totalAmount, 0);
+
+        dataPoints.push({ label, value: revenue });
+      }
+    } else {
+      for (let i = daysToInclude - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const label = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        
+        const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
+        const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
+        
+        const revenue = ordersList
+          .filter(order => order.status === 'PAID')
+          .filter(order => {
+            const t = new Date(order.createdAt).getTime();
+            return t >= startOfDay && t <= endOfDay;
+          })
+          .reduce((sum, order) => sum + order.totalAmount, 0);
+
+        dataPoints.push({ label, value: revenue });
+      }
+    }
+
+    return dataPoints;
+  };
+
+  const chartData = getChartData();
+
   const fetchDbProducts = async () => {
     setDbProductsLoading(true);
     try {
@@ -143,6 +295,38 @@ const AdminUpload = () => {
       fetchDbCategoryBanners();
     }
   }, [activeTab, token]);
+
+  // Handle redirect from header notification click (Orders)
+  useEffect(() => {
+    const redirectOrderId = localStorage.getItem('adminRedirectOrderId');
+    if (redirectOrderId) {
+      if (activeTab !== 'dashboard') {
+        setActiveTab('dashboard');
+      } else if (ordersList.length > 0) {
+        const order = ordersList.find(o => String(o.id) === String(redirectOrderId));
+        if (order) {
+          setSelectedOrderForModal(order);
+          localStorage.removeItem('adminRedirectOrderId');
+        }
+      }
+    }
+  }, [ordersList, activeTab]);
+
+  // Handle redirect from header notification click (Products/Low Stock)
+  useEffect(() => {
+    const redirectProductId = localStorage.getItem('adminRedirectProductId');
+    if (redirectProductId) {
+      if (activeTab !== 'products') {
+        setActiveTab('products');
+      } else if (dbProducts.length > 0) {
+        const product = dbProducts.find(p => String(p.id) === String(redirectProductId));
+        if (product) {
+          handleProductEdit(product);
+          localStorage.removeItem('adminRedirectProductId');
+        }
+      }
+    }
+  }, [dbProducts, activeTab]);
 
   if (authLoading) {
     return (
@@ -222,7 +406,7 @@ const AdminUpload = () => {
   const handleAddColor = () => {
     const trimmedColor = newColorName.trim();
     if (!trimmedColor) return;
-    
+
     // Check if color already exists
     if (colorsList.some(c => c.color.toLowerCase() === trimmedColor.toLowerCase())) {
       alert('Color already exists in the list!');
@@ -231,8 +415,8 @@ const AdminUpload = () => {
 
     setColorsList((prev) => [
       ...prev,
-      { 
-        color: trimmedColor, 
+      {
+        color: trimmedColor,
         stock: 0,
         enabled: true,
         sizeStock: { XS: 0, S: 0, M: 0, L: 0, XL: 0, XXL: 0 }
@@ -346,8 +530,8 @@ const AdminUpload = () => {
     });
 
     try {
-      const url = editingProduct 
-        ? `${API_BASE}/api/products/${editingProduct.id}` 
+      const url = editingProduct
+        ? `${API_BASE}/api/products/${editingProduct.id}`
         : `${API_BASE}/api/products`;
       const method = editingProduct ? 'PUT' : 'POST';
 
@@ -363,9 +547,9 @@ const AdminUpload = () => {
         throw new Error(result.error || 'Failed to save product details.');
       }
 
-      setMessage({ 
-        type: 'success', 
-        text: editingProduct ? 'Product details updated successfully!' : 'Product created successfully!' 
+      setMessage({
+        type: 'success',
+        text: editingProduct ? 'Product details updated successfully!' : 'Product created successfully!'
       });
 
       // Reset Form State
@@ -423,7 +607,7 @@ const AdminUpload = () => {
         }
       };
     }) : [];
-    
+
     setColorsList(initialColorsList);
     setCardPreview(prod.images?.[0] || '');
     setDetailPreviews(prod.images?.slice(1) || []);
@@ -551,9 +735,9 @@ const AdminUpload = () => {
         throw new Error(result.error || `Failed to update ${category} banner.`);
       }
 
-      setMessage({ 
-        type: 'success', 
-        text: `Successfully updated ${category} Collection banner image!` 
+      setMessage({
+        type: 'success',
+        text: `Successfully updated ${category} Collection banner image!`
       });
 
       cancelPending(category);
@@ -613,7 +797,7 @@ const AdminUpload = () => {
       setMessage({ type: 'error', text: error.message || 'Failed to delete banner.' });
     }
   };
-  
+
   const filteredProducts = dbProducts.filter((prod) => {
     const query = adminSearchQuery.toLowerCase().trim();
     const categoryMatches = adminCategoryFilter === 'All' || prod.category === adminCategoryFilter;
@@ -625,61 +809,56 @@ const AdminUpload = () => {
 
   return (
     <div className="min-h-screen pt-24 pb-16 bg-white text-black font-roboto">
-      <div className="max-w-4xl mx-auto px-6">
-        
+      <div className="max-w-7xl mx-auto px-6">
+
         {/* Navigation Tabs */}
         <div className="flex gap-4 mb-8 border-b border-gray-200 pb-4 overflow-x-auto">
           <button
             onClick={() => handleTabChange('dashboard')}
-            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${
-              activeTab === 'dashboard'
+            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${activeTab === 'dashboard'
                 ? 'border-black text-black'
                 : 'border-transparent text-gray-400 hover:text-black'
-            }`}
+              }`}
           >
             Dashboard
           </button>
           <button
             onClick={() => handleTabChange('products')}
-            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${
-              activeTab === 'products'
+            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${activeTab === 'products'
                 ? 'border-black text-black'
                 : 'border-transparent text-gray-400 hover:text-black'
-            }`}
+              }`}
           >
             Manage Products
           </button>
           <button
             onClick={() => handleTabChange('banners')}
-            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${
-              activeTab === 'banners'
+            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${activeTab === 'banners'
                 ? 'border-black text-black'
                 : 'border-transparent text-gray-400 hover:text-black'
-            }`}
+              }`}
           >
             Slideshow Banners
           </button>
           <button
             onClick={() => handleTabChange('categories')}
-            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${
-              activeTab === 'categories'
+            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${activeTab === 'categories'
                 ? 'border-black text-black'
                 : 'border-transparent text-gray-400 hover:text-black'
-            }`}
+              }`}
           >
             Collection Banners
           </button>
         </div>
- 
+
         {/* Form Container */}
         <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
           {message.text && (
             <div
-              className={`p-4 mb-6 rounded-lg text-sm font-semibold transition-all duration-300 ${
-                message.type === 'success'
+              className={`p-4 mb-6 rounded-lg text-sm font-semibold transition-all duration-300 ${message.type === 'success'
                   ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
                   : 'bg-rose-50 border border-rose-200 text-rose-800'
-              }`}
+                }`}
             >
               {message.text}
             </div>
@@ -688,16 +867,40 @@ const AdminUpload = () => {
           {/* TAB 0: DASHBOARD OVERVIEW */}
           {activeTab === 'dashboard' && (
             <div className="space-y-8 font-roboto">
-              <div className="flex justify-between items-center pb-4 border-b border-gray-100">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center pb-4 border-b border-gray-100 gap-4">
                 <h3 className="text-2xl font-bold text-gray-900">
                   Dashboard Overview
                 </h3>
-                <button
-                  onClick={fetchDashboardData}
-                  className="px-4 py-2 bg-gray-50 border border-gray-200 hover:border-black rounded-lg text-xs font-bold transition cursor-pointer focus:outline-none"
-                >
-                  ↻ Refresh Data
-                </button>
+                <div className="flex items-center gap-3 self-end sm:self-auto">
+                  {/* Time Filters */}
+                  <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-xs">
+                    {[
+                      { label: 'Today', value: 'Today' },
+                      { label: '7 Days', value: '7days' },
+                      { label: '30 Days', value: '30days' },
+                      { label: 'All Time', value: 'All' }
+                    ].map(filter => (
+                      <button
+                        type="button"
+                        key={filter.value}
+                        onClick={() => setTimeFilter(filter.value)}
+                        className={`px-3 py-1.5 rounded-md font-bold transition cursor-pointer ${
+                          timeFilter === filter.value
+                            ? 'bg-white text-black shadow-sm'
+                            : 'text-gray-400 hover:text-black'
+                        }`}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={fetchDashboardData}
+                    className="px-4 py-2 bg-gray-50 border border-gray-200 hover:border-black rounded-lg text-xs font-bold transition cursor-pointer focus:outline-none"
+                  >
+                    ↻ Refresh Data
+                  </button>
+                </div>
               </div>
 
               {dashboardLoading ? (
@@ -715,38 +918,47 @@ const AdminUpload = () => {
               ) : (
                 <>
                   {/* Metrics Cards Grid */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Sales</p>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
-                        ${dashboardStats?.metrics?.totalRevenue?.toFixed(2) || '0.00'}
+                        ${activeMetrics.totalRevenue.toFixed(2)}
                       </p>
                     </div>
                     <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Orders Count</p>
                       <p className="text-2xl font-bold text-gray-900 mt-1">
-                        {dashboardStats?.metrics?.totalOrders || 0}
+                        {activeMetrics.totalOrders}
                       </p>
                     </div>
                     <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
                       <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Paid Orders</p>
                       <p className="text-2xl font-bold text-emerald-700 mt-1">
-                        {dashboardStats?.metrics?.paidCount || 0}
+                        {activeMetrics.paidCount}
                       </p>
                     </div>
-                    <div className="bg-gray-50 border border-gray-105 p-5 rounded-xl">
+                    <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
                       <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">Pending Orders</p>
                       <p className="text-2xl font-bold text-amber-700 mt-1">
-                        {dashboardStats?.metrics?.pendingCount || 0}
+                        {activeMetrics.pendingCount}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl col-span-2 lg:col-span-1">
+                      <p className="text-xs font-bold text-indigo-650 uppercase tracking-wider">Avg Order Value</p>
+                      <p className="text-2xl font-bold text-indigo-700 mt-1">
+                        ${activeMetrics.aov.toFixed(2)}
                       </p>
                     </div>
                   </div>
+
+                  {/* Trend Chart */}
+                  <SalesTrendChart data={chartData} />
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Orders Table */}
                     <div className="lg:col-span-2 space-y-4">
                       <h4 className="font-bold text-lg text-gray-900">Recent Orders</h4>
-                      {ordersList.length === 0 ? (
+                      {filteredOrders.length === 0 ? (
                         <p className="text-gray-400 text-sm italic">No orders found.</p>
                       ) : (
                         <div className="overflow-x-auto border border-gray-100 rounded-xl">
@@ -756,12 +968,13 @@ const AdminUpload = () => {
                                 <th className="p-4">Customer</th>
                                 <th className="p-4">Total</th>
                                 <th className="p-4">Status</th>
+                                <th className="p-4">Fulfillment</th>
                                 <th className="p-4">Date</th>
                                 <th className="p-4 text-center">Action</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 text-gray-700">
-                              {ordersList.slice(0, 10).map((order) => (
+                              {filteredOrders.slice(0, 10).map((order) => (
                                 <tr key={order.id} className="hover:bg-gray-50/50">
                                   <td className="p-4 truncate max-w-[140px]" title={order.customerEmail}>
                                     {order.customerEmail}
@@ -778,6 +991,19 @@ const AdminUpload = () => {
                                         : 'bg-rose-50 text-rose-700 border border-rose-100'
                                     }`}>
                                       {order.status}
+                                    </span>
+                                  </td>
+                                  <td className="p-4">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                      order.status !== 'PAID'
+                                        ? 'bg-gray-100 text-gray-400 border border-gray-250'
+                                        : order.fulfillmentStatus === 'Delivered'
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                        : order.fulfillmentStatus === 'Shipped'
+                                        ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                                        : 'bg-rose-50 text-rose-700 border border-rose-100'
+                                    }`}>
+                                      {order.status !== 'PAID' ? 'N/A' : (order.fulfillmentStatus || 'Unfulfilled')}
                                     </span>
                                   </td>
                                   <td className="p-4 text-xs text-gray-400">
@@ -814,13 +1040,12 @@ const AdminUpload = () => {
                                 </p>
                                 <p className="text-[10px] text-gray-400 mt-0.5">SKU: {p.code}</p>
                               </div>
-                              <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                p.totalStock === 0
+                              <span className={`px-2 py-1 rounded text-xs font-bold ${p.totalStock === 0
                                   ? 'bg-rose-100 text-rose-800'
                                   : p.totalStock <= 5
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-gray-200 text-gray-800'
-                              }`}>
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-gray-200 text-gray-800'
+                                }`}>
                                 {p.totalStock} left
                               </span>
                             </div>
@@ -833,7 +1058,7 @@ const AdminUpload = () => {
               )}
             </div>
           )}
-                    {/* TAB 1: PRODUCTS MANAGEMENT */}
+          {/* TAB 1: PRODUCTS MANAGEMENT */}
           {activeTab === 'products' && (
             <div className="space-y-6 font-roboto">
               {!showProductForm ? (
@@ -957,9 +1182,8 @@ const AdminUpload = () => {
                                 {prod.code}
                               </td>
                               <td className="p-4 text-xs font-bold uppercase">
-                                <span className={`px-2 py-0.5 rounded ${
-                                  prod.category === 'Women' ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
-                                }`}>
+                                <span className={`px-2 py-0.5 rounded ${prod.category === 'Women' ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-blue-50 text-blue-700 border border-blue-100'
+                                  }`}>
                                   {prod.category}
                                 </span>
                               </td>
@@ -995,7 +1219,7 @@ const AdminUpload = () => {
                   <h3 className="text-2xl font-bold mb-6 text-gray-900 border-b border-gray-100 pb-3">
                     {editingProduct ? 'Edit Catalog Product' : 'Add New Catalog Product'}
                   </h3>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Product Name</label>
@@ -1022,7 +1246,7 @@ const AdminUpload = () => {
                       />
                     </div>
                   </div>
-     
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Price (USD)</label>
@@ -1050,7 +1274,7 @@ const AdminUpload = () => {
                       </select>
                     </div>
                   </div>
-     
+
                   {/* Product Color & Size Stock Configuration */}
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
@@ -1059,7 +1283,7 @@ const AdminUpload = () => {
                         Total Product Stock: {colorsList.filter(c => c.enabled).reduce((sum, c) => sum + Object.values(c.sizeStock).reduce((sSum, v) => sSum + v, 0), 0)}
                       </span>
                     </div>
-    
+
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -1076,7 +1300,7 @@ const AdminUpload = () => {
                         Add Color
                       </button>
                     </div>
-    
+
                     {colorsList.length === 0 ? (
                       <p className="text-gray-400 text-sm italic py-2">No colors added yet. Type a color above and click "Add Color".</p>
                     ) : (
@@ -1119,7 +1343,7 @@ const AdminUpload = () => {
                                   ✕ Remove Color
                                 </button>
                               </div>
-    
+
                               {/* Color Body - Size configuration for this color */}
                               {c.enabled && (
                                 <div className="space-y-3">
@@ -1143,7 +1367,7 @@ const AdminUpload = () => {
                                       );
                                     })}
                                   </div>
-    
+
                                   {/* Size Allocation Status Indicator */}
                                   <div className="pt-2 flex justify-between items-center text-xs font-semibold">
                                     <span className="text-gray-500">Allocated: {colorTotalStock} / {c.stock}</span>
@@ -1163,7 +1387,7 @@ const AdminUpload = () => {
                       </div>
                     )}
                   </div>
-     
+
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Model Info</label>
                     <input
@@ -1175,7 +1399,7 @@ const AdminUpload = () => {
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition text-sm"
                     />
                   </div>
-     
+
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
                     <textarea
@@ -1187,7 +1411,7 @@ const AdminUpload = () => {
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition resize-none text-sm"
                     />
                   </div>
-     
+
                   {/* Image Upload Guideline Note */}
                   <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <span className="text-amber-500 text-base mt-0.5">💡</span>
@@ -1196,7 +1420,7 @@ const AdminUpload = () => {
                       <p className="text-[11px] text-amber-700 mt-0.5">Upload a <strong>portrait-oriented image</strong> at a <strong>3:4 aspect ratio</strong> (e.g. 900×1200px) for best results. Landscape or square images will be cropped and may not display correctly in the product grid.</p>
                     </div>
                   </div>
-     
+
                   {/* Card & Detail Images Section */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -1222,7 +1446,7 @@ const AdminUpload = () => {
                         </div>
                       )}
                     </div>
-     
+
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">Detail Images (Slideshow, Max 5)</label>
                       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 hover:border-black rounded-xl cursor-pointer bg-gray-50 hover:bg-gray-100/50 transition-all duration-300">
@@ -1234,7 +1458,7 @@ const AdminUpload = () => {
                       </label>
                     </div>
                   </div>
-     
+
                   {detailPreviews.length > 0 && (
                     <div>
                       <label className="block text-sm font-semibold text-gray-500 mb-2">Detail Image Previews ({detailPreviews.length}/5)</label>
@@ -1254,14 +1478,13 @@ const AdminUpload = () => {
                       </div>
                     </div>
                   )}
-     
+
                   <div className="pt-4 flex gap-4">
                     <button
                       type="submit"
                       disabled={loading}
-                      className={`flex-1 py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
-                        loading ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
+                      className={`flex-1 py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${loading ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
                     >
                       {loading ? (editingProduct ? 'Saving changes...' : 'Creating product...') : (editingProduct ? 'Save Changes' : 'Create Product')}
                     </button>
@@ -1271,7 +1494,7 @@ const AdminUpload = () => {
                         setEditingProduct(null);
                         setShowProductForm(false);
                         setMessage({ type: '', text: '' });
-                        
+
                         setProductForm({ name: '', code: '', price: '', category: 'Women', description: '', modelInfo: '' });
                         setColorsList([]);
                         setCardPreview('');
@@ -1284,12 +1507,12 @@ const AdminUpload = () => {
                       Cancel
                     </button>
                   </div>
-     
+
                 </form>
               )}
             </div>
           )}
- 
+
           {/* TAB 2: BANNER MANAGEMENT */}
           {activeTab === 'banners' && (
             <div className="space-y-12">
@@ -1298,7 +1521,7 @@ const AdminUpload = () => {
                 <h3 className="text-2xl font-bold mb-6 text-gray-900">
                   Upload New Banner Image
                 </h3>
- 
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Banner Title (Optional)</label>
@@ -1323,7 +1546,7 @@ const AdminUpload = () => {
                     />
                   </div>
                 </div>
- 
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Link Path/URL (Optional)</label>
                   <input
@@ -1335,7 +1558,7 @@ const AdminUpload = () => {
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition text-sm"
                   />
                 </div>
- 
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Banner Image</label>
                   <div className="flex items-center justify-center w-full">
@@ -1347,31 +1570,30 @@ const AdminUpload = () => {
                       <input type="file" accept="image/*" onChange={handleBannerImage} className="hidden" />
                     </label>
                   </div>
- 
+
                   {bannerPreview && (
                     <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden bg-gray-50 p-2">
                       <img src={bannerPreview} alt="banner-preview" className="w-full max-h-48 object-cover rounded-md" />
                     </div>
                   )}
                 </div>
- 
+
                 <div className="pt-2">
                   <button
                     type="submit"
                     disabled={loading}
-                    className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
-                      loading ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
+                    className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${loading ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                   >
                     {loading ? 'Uploading banner to Cloudinary...' : 'Upload Banner'}
                   </button>
                 </div>
               </form>
- 
+
               {/* List of Current Banners */}
               <div className="border-t border-gray-200 pt-8">
                 <h3 className="text-2xl font-bold mb-6 text-gray-900">Active Banners</h3>
-                
+
                 {dbBanners.length === 0 ? (
                   <p className="text-gray-400 italic">No dynamic banners in the database. Using local defaults on home page.</p>
                 ) : (
@@ -1424,15 +1646,15 @@ const AdminUpload = () => {
                     />
                     <div className="aspect-[4/5] bg-gray-100 flex items-center justify-center overflow-hidden relative">
                       {pendingPreviews.Women ? (
-                        <img 
-                          src={pendingPreviews.Women} 
-                          alt="Women Collection Pending Banner" 
+                        <img
+                          src={pendingPreviews.Women}
+                          alt="Women Collection Pending Banner"
                           className="w-full h-full object-cover border-2 border-dashed border-black"
                         />
                       ) : dbCategoryBanners.find(b => b.category === 'Women') ? (
-                        <img 
-                          src={dbCategoryBanners.find(b => b.category === 'Women').imageUrl} 
-                          alt="Women Collection Custom Banner" 
+                        <img
+                          src={dbCategoryBanners.find(b => b.category === 'Women').imageUrl}
+                          alt="Women Collection Custom Banner"
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -1460,7 +1682,7 @@ const AdminUpload = () => {
                       )}
                     </div>
                   </label>
-                  
+
                   <div className="p-4 bg-white border-t border-gray-100">
                     <span className="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-full mb-1">
                       Women Collection
@@ -1523,15 +1745,15 @@ const AdminUpload = () => {
                     />
                     <div className="aspect-[4/5] bg-gray-100 flex items-center justify-center overflow-hidden relative">
                       {pendingPreviews.Men ? (
-                        <img 
-                          src={pendingPreviews.Men} 
-                          alt="Men Collection Pending Banner" 
+                        <img
+                          src={pendingPreviews.Men}
+                          alt="Men Collection Pending Banner"
                           className="w-full h-full object-cover border-2 border-dashed border-black"
                         />
                       ) : dbCategoryBanners.find(b => b.category === 'Men') ? (
-                        <img 
-                          src={dbCategoryBanners.find(b => b.category === 'Men').imageUrl} 
-                          alt="Men Collection Custom Banner" 
+                        <img
+                          src={dbCategoryBanners.find(b => b.category === 'Men').imageUrl}
+                          alt="Men Collection Custom Banner"
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -1559,7 +1781,7 @@ const AdminUpload = () => {
                       )}
                     </div>
                   </label>
-                  
+
                   <div className="p-4 bg-white border-t border-gray-100">
                     <span className="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-full mb-1">
                       Men Collection
@@ -1645,13 +1867,12 @@ const AdminUpload = () => {
               </div>
               <div>
                 <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">Status</p>
-                <span className={`inline-block px-2.5 py-0.5 mt-0.5 rounded text-[10px] font-bold uppercase ${
-                  selectedOrderForModal.status === 'PAID'
+                <span className={`inline-block px-2.5 py-0.5 mt-0.5 rounded text-[10px] font-bold uppercase ${selectedOrderForModal.status === 'PAID'
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                     : selectedOrderForModal.status === 'PENDING'
-                    ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                    : 'bg-rose-50 text-rose-700 border border-rose-100'
-                }`}>
+                      ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                      : 'bg-rose-50 text-rose-700 border border-rose-100'
+                  }`}>
                   {selectedOrderForModal.status}
                 </span>
               </div>
@@ -1664,6 +1885,33 @@ const AdminUpload = () => {
               <div>
                 <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">Customer Email</p>
                 <p className="font-semibold text-gray-800 mt-0.5">{selectedOrderForModal.customerEmail}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">Fulfillment Status</p>
+                {selectedOrderForModal.status === 'PAID' ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      selectedOrderForModal.fulfillmentStatus === 'Delivered'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                        : selectedOrderForModal.fulfillmentStatus === 'Shipped'
+                        ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                        : 'bg-rose-50 text-rose-700 border border-rose-100'
+                    }`}>
+                      {selectedOrderForModal.fulfillmentStatus || 'Unfulfilled'}
+                    </span>
+                    <select
+                      value={selectedOrderForModal.fulfillmentStatus || 'Unfulfilled'}
+                      onChange={(e) => updateFulfillmentStatus(selectedOrderForModal.id, e.target.value)}
+                      className="px-2 py-1 bg-gray-50 border border-gray-200 rounded text-xs font-semibold focus:outline-none focus:border-black cursor-pointer"
+                    >
+                      <option value="Unfulfilled">Unfulfilled</option>
+                      <option value="Shipped">Shipped</option>
+                      <option value="Delivered">Delivered</option>
+                    </select>
+                  </div>
+                ) : (
+                  <p className="font-semibold text-gray-400 mt-0.5">N/A (Payment Pending/Failed)</p>
+                )}
               </div>
               <div className="md:col-span-2">
                 <p className="text-xs text-gray-400 uppercase tracking-wider font-bold">Shipping Address</p>
@@ -1709,6 +1957,159 @@ const AdminUpload = () => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// --- Custom SVG Trend Chart Component ---
+const SalesTrendChart = ({ data }) => {
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+
+  if (!data || data.length === 0) return null;
+
+  const width = 600;
+  const height = 180;
+  const paddingLeft = 45;
+  const paddingRight = 45;
+  const paddingTop = 25;
+  const paddingBottom = 35;
+
+  const chartWidth = width - paddingLeft - paddingRight;
+  const chartHeight = height - paddingTop - paddingBottom;
+
+  const values = data.map(d => d.value);
+  const maxVal = Math.max(...values, 100);
+
+  // Calculate coordinates
+  const points = data.map((d, index) => {
+    const x = paddingLeft + (index / (data.length - 1)) * chartWidth;
+    const y = paddingTop + chartHeight - (d.value / maxVal) * chartHeight;
+    return { x, y, label: d.label, value: d.value };
+  });
+
+  // Simple line path
+  const linePath = points.reduce((path, p, i) => {
+    return i === 0 ? `M ${p.x} ${p.y}` : `${path} L ${p.x} ${p.y}`;
+  }, '');
+
+  return (
+    <div className="relative bg-white border border-gray-200 rounded-xl p-5 w-full shadow-sm">
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h5 className="font-bold text-sm text-gray-900">Sales Trend</h5>
+          <p className="text-[10px] text-gray-400 uppercase font-semibold mt-0.5">Revenue over time</p>
+        </div>
+        {hoveredIndex !== null && (
+          <div className="bg-black text-white px-2.5 py-1 rounded text-[11px] font-bold shadow-sm">
+            {points[hoveredIndex].label}: <span className="text-emerald-400">${points[hoveredIndex].value.toFixed(2)}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="w-full relative overflow-x-auto">
+        <svg className="w-full min-w-[500px]" viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }}>
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+            const y = paddingTop + ratio * chartHeight;
+            const val = maxVal * (1 - ratio);
+            return (
+              <g key={i}>
+                <line
+                  x1={paddingLeft}
+                  y1={y}
+                  x2={width - paddingRight}
+                  y2={y}
+                  stroke="#f3f4f6"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                />
+                <text
+                  x={paddingLeft - 8}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="fill-gray-400 font-bold"
+                  style={{ fontSize: '9px' }}
+                >
+                  ${Math.round(val)}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Simple Black Line */}
+          {linePath && (
+            <path
+              d={linePath}
+              fill="none"
+              stroke="#000000"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+
+          {/* Points & Interactive overlays */}
+          {points.map((p, i) => {
+            const isHovered = hoveredIndex === i;
+            const shouldShowLabel = points.length < 10 || i % Math.ceil(points.length / 6) === 0 || i === points.length - 1;
+
+            return (
+              <g key={i}>
+                {/* Date Axis Labels */}
+                {shouldShowLabel && (
+                  <text
+                    x={p.x}
+                    y={height - 8}
+                    textAnchor="middle"
+                    className="fill-gray-400 font-bold"
+                    style={{ fontSize: '9px' }}
+                  >
+                    {p.label}
+                  </text>
+                )}
+
+                {/* Vertical Guideline on Hover */}
+                {isHovered && (
+                  <line
+                    x1={p.x}
+                    y1={paddingTop}
+                    x2={p.x}
+                    y2={paddingTop + chartHeight}
+                    stroke="#000000"
+                    strokeWidth="1"
+                    strokeDasharray="2 2"
+                    opacity="0.3"
+                  />
+                )}
+
+                {/* Dot on Hover */}
+                {isHovered && (
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={4}
+                    fill="#000000"
+                    stroke="#ffffff"
+                    strokeWidth={1.5}
+                  />
+                )}
+
+                {/* Invisible hover capture rect slice */}
+                <rect
+                  x={p.x - chartWidth / (points.length - 1) / 2}
+                  y={paddingTop}
+                  width={chartWidth / (points.length - 1)}
+                  height={chartHeight}
+                  fill="transparent"
+                  className="cursor-pointer"
+                  onMouseEnter={() => setHoveredIndex(i)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
     </div>
   );
 };

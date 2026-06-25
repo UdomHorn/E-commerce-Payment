@@ -10,10 +10,12 @@ import Favorites from './Pages/Favorites'
 import MyOrders from './Pages/MyOrders'
 import { Routes, Route } from 'react-router-dom'
 import AuthModal from './assets/Components/AuthModal'
+import ScrollToTop from './assets/Components/ScrollToTop'
 
 function App() {
   return (
     <div className=''>
+      <ScrollToTop />
       <Nav />
       <Routes>
         <Route path="/" element={<Home />} />

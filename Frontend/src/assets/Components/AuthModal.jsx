@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion'; // eslint-disable-line no-unused-vars
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faXmark, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import { useAuth } from '../../context/AuthContext';
-import logo from '../Images/logo.png';
+import logo from '../logo/Devclothes.jpg';
 
 const AuthModal = () => {
   const { authModalOpen, closeAuthModal, login, register } = useAuth();
@@ -47,7 +47,7 @@ const AuthModal = () => {
         setPassword('');
         setConfirmPassword('');
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
@@ -99,9 +99,8 @@ const AuthModal = () => {
           <div className="flex border-b border-gray-100 mb-6">
             <button
               onClick={() => handleTabChange(false)}
-              className={`flex-1 pb-3 text-sm font-semibold transition-all relative cursor-pointer focus:outline-none ${
-                !isSignUp ? 'text-black' : 'text-gray-400 hover:text-gray-600'
-              }`}
+              className={`flex-1 pb-3 text-sm font-semibold transition-all relative cursor-pointer focus:outline-none ${!isSignUp ? 'text-black' : 'text-gray-400 hover:text-gray-600'
+                }`}
             >
               Sign In
               {!isSignUp && (
@@ -113,9 +112,8 @@ const AuthModal = () => {
             </button>
             <button
               onClick={() => handleTabChange(true)}
-              className={`flex-1 pb-3 text-sm font-semibold transition-all relative cursor-pointer focus:outline-none ${
-                isSignUp ? 'text-black' : 'text-gray-400 hover:text-gray-600'
-              }`}
+              className={`flex-1 pb-3 text-sm font-semibold transition-all relative cursor-pointer focus:outline-none ${isSignUp ? 'text-black' : 'text-gray-400 hover:text-gray-600'
+                }`}
             >
               Create Account
               {isSignUp && (
