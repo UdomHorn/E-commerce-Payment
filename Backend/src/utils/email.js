@@ -1,4 +1,11 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
+
+// Force Node.js to prioritize IPv4 over IPv6. 
+// Deployed environments (like Render) often lack IPv6 route support, causing IPv6 SMTP connections to fail with ENETUNREACH.
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 const sendOTPEmail = async (email, otp) => {
   console.log(`🔑 [OTP VERIFICATION] OTP code for ${email} is: ${otp}`);
