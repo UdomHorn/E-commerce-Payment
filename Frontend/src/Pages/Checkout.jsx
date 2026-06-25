@@ -4,6 +4,7 @@ import { Elements, CardElement, useStripe, useElements } from '@stripe/react-str
 import { useCart } from '../context/CartContext';
 import { Link } from 'react-router-dom';
 import API_BASE from '../config';
+import logo from '../assets/logo/Devclothes.jpg';
 
 // Initialize Stripe (VITE_STRIPE_PUBLISHABLE_KEY from .env or fallback test key)
 const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_51PxPlaceholderKeyXXXXXXXXXXXXXX';
@@ -216,7 +217,7 @@ const Checkout = () => {
 
   if (paymentSuccess) {
     return (
-      <div className="min-h-screen bg-white text-black font-roboto pt-[64px] pb-16 flex flex-col items-center justify-center p-6 print:pt-0 print:pb-0">
+      <div className="min-h-screen bg-white text-black font-roboto pt-[64px] pb-16 flex flex-col items-center justify-center p-6 print:pt-4 print:pb-0 print:justify-start print:min-h-0">
         <div className="w-full max-w-2xl bg-white border border-gray-150 rounded-2xl shadow-lg p-8 print:border-0 print:shadow-none print:p-0">
 
           {/* Success Checkmark & Header (hidden in print) */}
@@ -231,8 +232,8 @@ const Checkout = () => {
           {/* Printable Invoice Header (visible only in print) */}
           <div className="hidden print:flex items-center justify-between border-b pb-6 mb-6">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight">TEN11 STORE</h2>
-              <p className="text-xs text-gray-400">Order Invoice / Receipt</p>
+              <img src={logo} alt="Devclothes Logo" className="w-32 object-contain" />
+              <p className="text-xs text-gray-400 mt-1">Order Invoice / Receipt</p>
             </div>
             <div className="text-right">
               <p className="text-sm font-bold text-gray-900">#Order {orderConfirmationId}</p>
@@ -277,7 +278,7 @@ const Checkout = () => {
                 <div>
                   <p className="text-gray-400 font-bold uppercase tracking-wider">Status</p>
                   <span className={`inline-block px-2.5 py-0.5 mt-0.5 rounded-[4px] text-[10px] font-bold uppercase border ${receiptDetails.status === 'PAID'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
+                      ? 'bg-gray-150 text-black border-gray-300'
                       : receiptDetails.status === 'PENDING'
                         ? 'bg-amber-50 text-amber-800 border-amber-100'
                         : 'bg-rose-50 text-rose-800 border-rose-100'
@@ -339,7 +340,7 @@ const Checkout = () => {
                     </div>
                     <div className="flex justify-between">
                       <span>Shipping Cost</span>
-                      <span className="text-emerald-600 font-bold">FREE</span>
+                      <span className="text-gray-900 font-bold">FREE</span>
                     </div>
                     <div className="flex justify-between text-sm font-extrabold pt-2 border-t text-gray-950">
                       <span>Grand Total</span>

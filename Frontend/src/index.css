@@ -2,4 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+@media print {
+  @page {
+    size: auto;
+    margin: 8mm 12mm 8mm 12mm;
+  }
+  
+  nav, footer, .print-hidden {
+    display: none !important;
+  }
+
+  body, html {
+    background: white !important;
+    color: black !important;
+  }
+}
+
+
 
