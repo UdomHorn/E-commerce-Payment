@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBars, faMagnifyingGlass, faHeart, faBagShopping, faXmark, faSpinner, faBell, faTriangleExclamation, faCircleExclamation } from '@fortawesome/free-solid-svg-icons'
 import { motion, AnimatePresence } from "framer-motion"
-import logo from '../assets/Images/logo.png'
+import logo from '../assets/logo/Devclothes.jpg'
 import { Link, useNavigate } from 'react-router-dom'
 import API_BASE from '../config'
 import { useCart } from '../context/CartContext'
@@ -16,12 +16,16 @@ const Nav = () => {
   const { getFavoritesCount } = useFavorites();
   const { user, openAuthModal, logout } = useAuth();
   const [showSearch, setShowSearch] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [featuredProducts, setFeaturedProducts] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
+  const [activeDropdown, setActiveDropdown] = useState(null);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+
   const inputRef = useRef(null);
+  const userDropdownRef = useRef(null);
   const navigate = useNavigate();
 
   // Admin Notification States
@@ -136,7 +140,35 @@ const Nav = () => {
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  // Focus input and fetch initial products when search overlay opens
+  // Fetch all products on mount
+  useEffect(() => {
+    const fetchAllProducts = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/products`);
+        if (response.ok) {
+          const data = await response.json();
+          setAllProducts(data);
+          setFeaturedProducts(data.slice(0, 4));
+        }
+      } catch (err) {
+        console.error('Failed to fetch products on mount:', err);
+      }
+    };
+    fetchAllProducts();
+  }, []);
+
+  // Click outside to close user dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+        setShowUserDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Focus input when search overlay opens
   useEffect(() => {
     if (showSearch) {
       setTimeout(() => {
@@ -144,13 +176,12 @@ const Nav = () => {
           inputRef.current.focus();
         }
       }, 100);
-      fetchFeaturedProducts();
     }
   }, [showSearch]);
 
-  // Disable body scroll when search or menu is active
+  // Disable body scroll when search is active
   useEffect(() => {
-    if (showSearch || showMenu) {
+    if (showSearch) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -158,33 +189,20 @@ const Nav = () => {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [showSearch, showMenu]);
+  }, [showSearch]);
 
-  // Handle Escape key to close search or menu
+  // Handle Escape key to close search, activeDropdown or userDropdown
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         setShowSearch(false);
-        setShowMenu(false);
+        setActiveDropdown(null);
+        setShowUserDropdown(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  // Fetch featured products for empty state
-  const fetchFeaturedProducts = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/products`);
-      if (response.ok) {
-        const data = await response.json();
-        // Show first 4 products
-        setFeaturedProducts(data.slice(0, 4));
-      }
-    } catch (err) {
-      console.error('Failed to fetch featured products:', err);
-    }
-  };
 
   // Debounced search query fetching
   useEffect(() => {
@@ -213,29 +231,38 @@ const Nav = () => {
 
   return (
     <div className='fixed w-full top-0 left-0 z-10'>
-      <div className='w-full bg-white flex justify-center items-center'>
-        <div className='flex justify-between w-[80%] items-center p-2.5 max-md:w-full '>
-          <div className='flex gap-2 items-center text-2xl '>
-            <button
-              onClick={() => setShowMenu(true)}
-              className='cursor-pointer p-1 hover:text-gray-600 transition-colors focus:outline-none'
-              aria-label="Open menu"
-            >
-              <FontAwesomeIcon icon={faBars} />
-            </button>
-            <div className='w-[120px] hidden max-md:block '>
+      <div 
+        className='w-full bg-white flex flex-col items-center relative'
+        onMouseLeave={() => setActiveDropdown(null)}
+      >
+        <div className='flex justify-between w-[80%] items-center p-2.5 max-md:w-full'>
+          {/* Left section: Logo */}
+          <div className='flex gap-2 items-center text-2xl'>
+            <div className='w-[150px] max-md:w-[120px]'>
               <Link to="/">
-                <img src={logo} alt="" />
+                <img src={logo} alt="Logo" />
               </Link>
             </div>
           </div>
 
-          <div className='w-[250px] max-md:hidden max-xl:w-[150px]'>
-            <Link to="/">
-              <img src={logo} alt="" />
-            </Link>
+          {/* Center section: Navigation links (Desktop only) */}
+          <div className='hidden md:flex gap-8 items-center text-base font-semibold text-gray-800 tracking-wide'>
+            <Link to="/" className="hover:text-black transition-colors">Home</Link>
+            <div
+              className="relative py-2 cursor-pointer hover:text-black transition-colors"
+              onMouseEnter={() => setActiveDropdown('women')}
+            >
+              <Link to="/Women">Women</Link>
+            </div>
+            <div
+              className="relative py-2 cursor-pointer hover:text-black transition-colors"
+              onMouseEnter={() => setActiveDropdown('men')}
+            >
+              <Link to="/Men">Men</Link>
+            </div>
           </div>
 
+          {/* Right section: Action Icons */}
           <div className='flex text-xl gap-5 items-center'>
             <style>{`
               .no-scrollbar::-webkit-scrollbar {
@@ -278,7 +305,7 @@ const Nav = () => {
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 15, scale: 0.95 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute right-0 top-8 w-[360px] bg-white/95 backdrop-blur-md border border-gray-255 rounded-xl shadow-2xl overflow-hidden z-50 font-roboto"
+                      className="absolute right-0 top-8 w-[360px] bg-white/95 backdrop-blur-md border border-gray-200 rounded-xl shadow-2xl overflow-hidden z-50 font-roboto"
                     >
                       {/* Header */}
                       <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-gray-50/50">
@@ -341,6 +368,78 @@ const Nav = () => {
               </div>
             )}
 
+            {/* User Account Icon and Dropdown */}
+            <div className="relative flex items-center justify-center" ref={userDropdownRef}>
+              <button
+                onClick={() => {
+                  if (user) {
+                    setShowUserDropdown(!showUserDropdown);
+                  } else {
+                    openAuthModal();
+                  }
+                }}
+                className="cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center focus:outline-none"
+                aria-label="User Account"
+              >
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  strokeWidth="1.5" 
+                  stroke="currentColor" 
+                  className="w-6 h-6"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                </svg>
+              </button>
+
+              <AnimatePresence>
+                {showUserDropdown && user && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 15, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-8 w-56 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden z-50 font-roboto"
+                  >
+                    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+                      <span className="text-xs text-gray-500">Signed in as</span>
+                      <span className="font-semibold text-sm text-gray-900 block truncate font-medium">{user.email}</span>
+                    </div>
+                    <div className="py-1">
+                      <Link
+                        to="/my-orders"
+                        onClick={() => setShowUserDropdown(false)}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-black transition-colors"
+                      >
+                        My Purchases
+                      </Link>
+                      {user?.role === 'admin' && (
+                        <Link
+                          to="/admin/upload"
+                          onClick={() => setShowUserDropdown(false)}
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-black transition-colors font-medium"
+                        >
+                          Admin Portal
+                        </Link>
+                      )}
+                    </div>
+                    <div className="border-t border-gray-100 p-2">
+                      <button
+                        onClick={() => {
+                          logout();
+                          setShowUserDropdown(false);
+                        }}
+                        className="w-full py-2 bg-black text-white hover:opacity-90 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             <Link
               to="/favorites"
               className='cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center'
@@ -357,6 +456,7 @@ const Nav = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
               </svg>
             </Link>
+            
             <Link
               to="/checkout"
               className='cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center'
@@ -380,144 +480,120 @@ const Nav = () => {
             </Link>
           </div>
         </div>
-      </div>
 
-      {/* Slide-out Burger Menu Sidebar */}
-      <AnimatePresence>
-        {showMenu && (
-          <>
-            {/* Backdrop Overlay */}
+        {/* Megamenu Dropdown Panel */}
+        <AnimatePresence>
+          {activeDropdown && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setShowMenu(false)}
-              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs"
-            />
-
-            {/* Sidebar Container */}
-            <motion.div
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 z-50 w-full max-w-[300px] bg-white shadow-2xl flex flex-col h-full"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="hidden md:block absolute left-0 top-full w-full bg-white border-b border-gray-200 shadow-xl overflow-hidden z-20"
             >
-              {/* Sidebar Header */}
-              <div className="flex justify-between items-center px-6 py-5 border-b border-gray-100">
-                <div className="w-[100px]">
-                  <Link to="/" onClick={() => setShowMenu(false)}>
-                    <img src={logo} alt="Logo" />
-                  </Link>
+              <div className="w-[80%] mx-auto py-8 grid grid-cols-12 gap-8 text-left">
+                {/* Left side: Quick Links */}
+                <div className="col-span-3 border-r border-gray-100 pr-8">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">
+                    Categories
+                  </h3>
+                  <ul className="space-y-3">
+                    <li>
+                      <Link
+                        to={`/${activeDropdown === 'women' ? 'Women' : 'Men'}`}
+                        onClick={() => setActiveDropdown(null)}
+                        className="text-base text-gray-800 hover:text-black font-semibold transition-colors block"
+                      >
+                        All {activeDropdown === 'women' ? "Women's" : "Men's"} Clothing
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        to={`/${activeDropdown === 'women' ? 'Women' : 'Men'}`}
+                        onClick={() => setActiveDropdown(null)}
+                        className="text-sm text-gray-600 hover:text-black transition-colors block"
+                      >
+                        Tops & T-Shirts
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        to={`/${activeDropdown === 'women' ? 'Women' : 'Men'}`}
+                        onClick={() => setActiveDropdown(null)}
+                        className="text-sm text-gray-600 hover:text-black transition-colors block"
+                      >
+                        Hoodies & Sweatshirts
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        to={`/${activeDropdown === 'women' ? 'Women' : 'Men'}`}
+                        onClick={() => setActiveDropdown(null)}
+                        className="text-sm text-gray-600 hover:text-black transition-colors block"
+                      >
+                        Pants & Jeans
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        to={`/${activeDropdown === 'women' ? 'Women' : 'Men'}`}
+                        onClick={() => setActiveDropdown(null)}
+                        className="text-sm text-gray-600 hover:text-black transition-colors block"
+                      >
+                        Jackets & Outerwear
+                      </Link>
+                    </li>
+                  </ul>
                 </div>
-                <button
-                  onClick={() => setShowMenu(false)}
-                  className="text-gray-500 hover:text-black transition-colors p-2 text-xl cursor-pointer focus:outline-none"
-                  aria-label="Close menu"
-                >
-                  <FontAwesomeIcon icon={faXmark} />
-                </button>
-              </div>
 
-              {/* Navigation Links */}
-              <nav className="flex-1 px-6 py-8 flex flex-col justify-between overflow-y-auto">
-                <div className="space-y-6">
-                  <div>
-                    <Link
-                      to="/"
-                      onClick={() => setShowMenu(false)}
-                      className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
-                    >
-                      Home
-                    </Link>
-                  </div>
-                  <div>
-                    <Link
-                      to="/Women"
-                      onClick={() => setShowMenu(false)}
-                      className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
-                    >
-                      Women Collection
-                    </Link>
-                  </div>
-                  <div>
-                    <Link
-                      to="/Men"
-                      onClick={() => setShowMenu(false)}
-                      className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
-                    >
-                      Men Collection
-                    </Link>
-                  </div>
-                  {user && (
-                    <div>
-                      <Link
-                        to="/my-orders"
-                        onClick={() => setShowMenu(false)}
-                        className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
-                      >
-                        My Purchases
-                      </Link>
-                    </div>
-                  )}
-
-                  {user?.role === 'admin' && (
-                    <div>
-                      <Link
-                        to="/admin/upload"
-                        onClick={() => setShowMenu(false)}
-                        className="text-lg font-medium text-gray-800 hover:text-black hover:pl-2 transition-all block py-2 border-b border-gray-50"
-                      >
-                        Admin Portal
-                      </Link>
-                    </div>
-                  )}
-                  
-                  {/* Authentication section in drawer */}
-                  <div className="pt-4 border-t border-gray-100">
-                    {user ? (
-                      <div className="space-y-4">
-                        <div className="text-sm text-gray-500">
-                          Signed in as <span className="font-semibold text-gray-800 block truncate">{user.email}</span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            logout();
-                            setShowMenu(false);
-                          }}
-                          className="w-full py-2.5 bg-black text-white hover:opacity-90 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
+                {/* Right side: 3 Dynamic Product Cards */}
+                <div className="col-span-9">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">
+                    Featured Items
+                  </h3>
+                  <div className="grid grid-cols-3 gap-6">
+                    {allProducts
+                      .filter(p => p.category?.toLowerCase() === activeDropdown.toLowerCase())
+                      .slice(0, 3)
+                      .map((product) => (
+                        <Link
+                          key={product.id}
+                          to={`/product/${product.code || product.id}`}
+                          onClick={() => setActiveDropdown(null)}
+                          className="group block"
                         >
-                          Sign Out
-                        </button>
+                          <div className="aspect-[3/4] w-full overflow-hidden bg-gray-50 rounded-lg mb-3 relative">
+                            {product.images && product.images[0] ? (
+                              <img
+                                src={product.images[0]}
+                                alt={product.name}
+                                className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+                              />
+                            ) : (
+                              <div className="h-full w-full bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+                                No Image
+                              </div>
+                            )}
+                          </div>
+                          <h4 className="text-sm font-medium text-gray-800 group-hover:text-black transition-colors truncate">
+                            {product.name}
+                          </h4>
+                          <p className="text-xs text-gray-400 mt-0.5">{product.category}</p>
+                          <p className="text-sm font-semibold text-gray-900 mt-1">${product.price.toFixed(2)}</p>
+                        </Link>
+                      ))}
+                    {allProducts.filter(p => p.category?.toLowerCase() === activeDropdown.toLowerCase()).length === 0 && (
+                      <div className="col-span-3 text-center py-8 text-gray-400 text-sm">
+                        No featured items available.
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setShowMenu(false);
-                          openAuthModal();
-                        }}
-                        className="w-full py-2.5 bg-black text-white hover:opacity-90 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
-                      >
-                        Sign In
-                      </button>
                     )}
                   </div>
                 </div>
-
-                {/* Sidebar Footer Info */}
-                <div className="text-xs text-gray-400 space-y-2 mt-8 pt-6 border-t border-gray-100">
-                  <p>&copy; {new Date().getFullYear()} TEN11. All rights reserved.</p>
-                  <div className="flex gap-4">
-                    <span className="hover:text-black cursor-pointer">Privacy Policy</span>
-                    <span className="hover:text-black cursor-pointer">Terms of Service</span>
-                  </div>
-                </div>
-              </nav>
+              </div>
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Modern Fullscreen Search Overlay */}
       <AnimatePresence>
