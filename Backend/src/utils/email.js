@@ -30,7 +30,13 @@ const sendOTPEmail = async (email, otp) => {
       socketTimeout: 5000,     // 5 seconds socket timeout
       // Custom DNS lookup to force IPv4 (family: 4) and prevent IPv6 connection hangs/errors
       lookup: (hostname, options, callback) => {
-        return dns.lookup(hostname, { ...options, family: 4 }, callback);
+        dns.lookup(hostname, { ...options, family: 4 }, (err, addresses, family) => {
+          if (err) return callback(err);
+          if (Array.isArray(addresses)) {
+            return callback(null, addresses.filter(addr => addr.family === 4));
+          }
+          return callback(null, addresses, family);
+        });
       }
     });
 
