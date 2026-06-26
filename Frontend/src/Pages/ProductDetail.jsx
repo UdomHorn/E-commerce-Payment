@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 
 const ProductDetail = () => {
   const { id } = useParams();
-  const { addToCart } = useCart();
+  const { cart, addToCart } = useCart();
   const { toggleFavorite, isFavorite } = useFavorites();
   const { user, openAuthModal } = useAuth();
   const [product, setProduct] = useState(null);
@@ -43,20 +43,25 @@ const ProductDetail = () => {
         
         // Set default selections - pick first item that is in-stock
         const inStockColors = data.colors ? data.colors.filter(c => {
-          const stock = data.colorStock && data.colorStock[c];
-          return stock === undefined || parseInt(stock, 10) > 0;
+          const stock = (data.colorStock && data.colorStock[c] !== undefined)
+            ? parseInt(data.colorStock[c], 10)
+            : 0;
+          return stock > 0;
         }) : [];
 
         const firstColor = inStockColors.length > 0 ? inStockColors[0] : '';
         setSelectedColor(firstColor);
 
         const inStockSizes = data.sizes ? data.sizes.filter(s => {
+          let stock = 0;
           if (data.sizeStock && firstColor && data.sizeStock[firstColor]) {
-            const stock = data.sizeStock[firstColor][s];
-            return stock !== undefined && parseInt(stock, 10) > 0;
+            const val = data.sizeStock[firstColor][s];
+            stock = val !== undefined ? parseInt(val, 10) : 0;
+          } else if (data.sizeStock) {
+            const val = data.sizeStock[s];
+            stock = val !== undefined ? parseInt(val, 10) : 0;
           }
-          const stock = data.sizeStock && data.sizeStock[s];
-          return stock === undefined || parseInt(stock, 10) > 0;
+          return stock > 0;
         }) : [];
 
         if (inStockSizes.length > 0) {
@@ -100,12 +105,15 @@ const ProductDetail = () => {
     if (!product) return;
 
     const availableForColor = product.sizes ? product.sizes.filter(s => {
+      let stock = 0;
       if (product.sizeStock && selectedColor && product.sizeStock[selectedColor]) {
-        const stock = product.sizeStock[selectedColor][s];
-        return stock !== undefined && parseInt(stock, 10) > 0;
+        const val = product.sizeStock[selectedColor][s];
+        stock = val !== undefined ? parseInt(val, 10) : 0;
+      } else if (product.sizeStock) {
+        const val = product.sizeStock[s];
+        stock = val !== undefined ? parseInt(val, 10) : 0;
       }
-      const stock = product.sizeStock && product.sizeStock[s];
-      return stock === undefined || parseInt(stock, 10) > 0;
+      return stock > 0;
     }) : [];
 
     if (availableForColor.length > 0) {
@@ -173,17 +181,22 @@ const ProductDetail = () => {
 
   // Filter active in-stock colors and sizes
   const availableColors = colors ? colors.filter(c => {
-    const stock = product.colorStock && product.colorStock[c];
-    return stock === undefined || parseInt(stock, 10) > 0;
+    const stock = (product.colorStock && product.colorStock[c] !== undefined)
+      ? parseInt(product.colorStock[c], 10)
+      : 0;
+    return stock > 0;
   }) : [];
 
   const availableSizes = sizes ? sizes.filter(s => {
+    let stock = 0;
     if (product.sizeStock && selectedColor && product.sizeStock[selectedColor]) {
-      const stock = product.sizeStock[selectedColor][s];
-      return stock !== undefined && parseInt(stock, 10) > 0;
+      const val = product.sizeStock[selectedColor][s];
+      stock = val !== undefined ? parseInt(val, 10) : 0;
+    } else if (product.sizeStock) {
+      const val = product.sizeStock[s];
+      stock = val !== undefined ? parseInt(val, 10) : 0;
     }
-    const stock = product.sizeStock && product.sizeStock[s];
-    return stock === undefined || parseInt(stock, 10) > 0;
+    return stock > 0;
   }) : [];
 
   const isOutOfStock = availableColors.length === 0 || availableSizes.length === 0;
@@ -209,6 +222,15 @@ const ProductDetail = () => {
       }
     });
   }
+  const existingCartItem = cart?.find(
+    (item) =>
+      item.id === product?.id &&
+      item.selectedSize === selectedSize &&
+      item.selectedColor === selectedColor
+  );
+  const cartQty = existingCartItem ? existingCartItem.quantity : 0;
+  const maxAllowedQty = (product?.sizeStock && currentStock > 0) ? Math.min(currentStock, 20) : 20;
+  const isLimitReached = selectedSize && selectedColor && cartQty >= maxAllowedQty;
 
   return (
     <div className="p-2.5 pt-[64px] font-roboto w-[80%] max-md:w-full mx-auto text-lg relative">
@@ -341,6 +363,14 @@ const ProductDetail = () => {
             <div className="text-xl font-bold text-gray-700 mt-2">${price.toFixed(2)}</div>
           </div>
 
+          {/* Out of Stock Banner */}
+          {isOutOfStock && (
+            <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold flex items-center gap-2 rounded-none">
+              <span className="text-base"></span>
+              <span>Out of stock: This item is currently unavailable.</span>
+            </div>
+          )}
+
           {/* Color Selector */}
           {/* Color Selector */}
           <ColorAvailable
@@ -361,18 +391,17 @@ const ProductDetail = () => {
             sizeError={sizeShake}
           />
 
-          {/* Low stock warning — shown inline above Add to Bag */}
-          {currentStock > 0 && currentStock <= 3 && selectedSize && (
-            <p className="text-xs text-red-600 font-semibold tracking-wide -mt-1">
-              ⚠ Few pieces left
-            </p>
-          )}
-
           {/* Add to Bag — immediately after size, H&M style */}
           <AddtoBag
             onClick={handleAddToBag}
-            disabled={isOutOfStock}
-            label={isOutOfStock ? 'Out of Stock' : 'Add to bag'}
+            disabled={isOutOfStock || isLimitReached}
+            label={
+              isOutOfStock
+                ? 'Out of Stock'
+                : isLimitReached
+                  ? (maxAllowedQty === 20 ? 'Limit of 20 reached' : 'Stock limit reached')
+                  : 'Add to bag'
+            }
           />
 
           {/* Product ID & Description — moved below Add to Bag */}

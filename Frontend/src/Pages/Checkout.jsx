@@ -378,7 +378,7 @@ const CheckoutForm = ({ totalAmount, onSuccess, onError, errorMessage }) => {
 };
 
 const Checkout = () => {
-  const { cart, updateQuantity, removeFromCart, getCartTotal, clearCart } = useCart();
+  const { cart, updateQuantity, removeFromCart, getCartTotal, clearCart, syncCartStock } = useCart();
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [orderConfirmationId, setOrderConfirmationId] = useState('');
   const [checkoutEmail, setCheckoutEmail] = useState('');
@@ -389,6 +389,12 @@ const Checkout = () => {
   const [receiptError, setReceiptError] = useState('');
 
   const totalAmount = getCartTotal();
+
+  useEffect(() => {
+    if (syncCartStock) {
+      syncCartStock();
+    }
+  }, []);
 
   useEffect(() => {
     if (paymentSuccess && orderConfirmationId) {
@@ -637,17 +643,18 @@ const Checkout = () => {
                     <span className="font-semibold">{item.quantity}</span>
                     <button
                       onClick={() => updateQuantity(item.id, item.selectedSize, item.selectedColor, item.quantity + 1)}
-                      disabled={item.maxStock > 0 && item.quantity >= item.maxStock}
-                      className={`w-8 h-8 bg-gray-100 flex items-center justify-center font-semibold rounded transition ${item.maxStock > 0 && item.quantity >= item.maxStock
+                      disabled={item.quantity >= 20 || (item.maxStock > 0 && item.quantity >= item.maxStock)}
+                      className={`w-8 h-8 bg-gray-100 flex items-center justify-center font-semibold rounded transition ${
+                        item.quantity >= 20 || (item.maxStock > 0 && item.quantity >= item.maxStock)
                           ? 'opacity-40 cursor-not-allowed'
                           : 'hover:bg-gray-200 cursor-pointer'
-                        }`}
+                      }`}
                     >
                       +
                     </button>
-                    {item.maxStock > 0 && (
-                      <span className="text-xs text-gray-400 font-medium">Max: {item.maxStock}</span>
-                    )}
+                    <span className="text-xs text-gray-400 font-medium">
+                      Max: {Math.min(item.maxStock > 0 ? item.maxStock : 20, 20)}
+                    </span>
                     <button
                       onClick={() => removeFromCart(item.id, item.selectedSize, item.selectedColor)}
                       className="text-red-500 hover:text-red-700 text-sm ml-auto"

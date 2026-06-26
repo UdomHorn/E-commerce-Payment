@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import API_BASE from '../config';
 import { useAuth } from '../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
 
+import defaultWomen from '../assets/Images/8J6A0448.jpg';
+import defaultMen from '../assets/Images/8J6A0460.jpg';
+
 const AdminUpload = () => {
-  const { user, token, loading: authLoading } = useAuth();
+  const { user, token, loading: authLoading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'products', 'banners', or 'categories'
   const [message, setMessage] = useState({ type: '', text: '' });
   const [loading, setLoading] = useState(false);
@@ -22,6 +25,157 @@ const AdminUpload = () => {
   const [dashboardError, setDashboardError] = useState('');
   const [selectedOrderForModal, setSelectedOrderForModal] = useState(null);
   const [timeFilter, setTimeFilter] = useState('All'); // 'Today', '7days', '30days', 'All'
+
+  // --- Restocking States & Handlers ---
+  const [restockInputs, setRestockInputs] = useState({});
+  const [updatingStockKeys, setUpdatingStockKeys] = useState({});
+
+  const getLowStockVariants = (products) => {
+    if (!products || !Array.isArray(products)) return [];
+    const variants = [];
+    products.forEach(product => {
+      let hasNestedSizeStock = false;
+      if (product.sizeStock && typeof product.sizeStock === 'object') {
+        const keys = Object.keys(product.sizeStock);
+        if (keys.length > 0 && typeof product.sizeStock[keys[0]] === 'object' && product.sizeStock[keys[0]] !== null) {
+          hasNestedSizeStock = true;
+        }
+      }
+
+      if (hasNestedSizeStock) {
+        Object.entries(product.sizeStock).forEach(([color, sizesObj]) => {
+          if (sizesObj && typeof sizesObj === 'object') {
+            Object.entries(sizesObj).forEach(([size, count]) => {
+              const countNum = parseInt(count, 10) || 0;
+              if (countNum <= 10) {
+                variants.push({ product, color, size, count: countNum });
+              }
+            });
+          }
+        });
+      } else if (product.sizeStock && typeof product.sizeStock === 'object' && Object.keys(product.sizeStock).length > 0) {
+        Object.entries(product.sizeStock).forEach(([size, count]) => {
+          const countNum = parseInt(count, 10) || 0;
+          if (countNum <= 10) {
+            variants.push({ product, color: null, size, count: countNum });
+          }
+        });
+      } else if (product.colorStock && typeof product.colorStock === 'object' && Object.keys(product.colorStock).length > 0) {
+        Object.entries(product.colorStock).forEach(([color, count]) => {
+          const countNum = parseInt(count, 10) || 0;
+          if (countNum <= 10) {
+            variants.push({ product, color, size: null, count: countNum });
+          }
+        });
+      }
+    });
+    return variants;
+  };
+
+  const handleDecrement = (key, currentValue) => {
+    const val = Math.max(0, (parseInt(currentValue, 10) || 0) - 1);
+    setRestockInputs(prev => ({ ...prev, [key]: val }));
+  };
+
+  const handleIncrement = (key, currentValue) => {
+    const val = (parseInt(currentValue, 10) || 0) + 1;
+    setRestockInputs(prev => ({ ...prev, [key]: val }));
+  };
+
+  const handleInputChange = (key, e) => {
+    const valStr = e.target.value.replace(/[^0-9]/g, '');
+    const val = valStr === '' ? '' : parseInt(valStr, 10);
+    setRestockInputs(prev => ({ ...prev, [key]: val }));
+  };
+
+  const handleUpdateStock = async (product, color, size, newValue) => {
+    const key = `${product.id}-${color}-${size}`;
+    const parsedCount = parseInt(newValue, 10);
+    if (isNaN(parsedCount) || parsedCount < 0) return;
+
+    setUpdatingStockKeys(prev => ({ ...prev, [key]: true }));
+    try {
+      const response = await fetch(`${API_BASE}/api/products/${product.id}/stock`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'include',
+        body: JSON.stringify({ color, size, count: parsedCount })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to update stock.');
+      }
+
+      const data = await response.json();
+
+      setDashboardStats(prev => {
+        if (!prev) return prev;
+        const updatedLowStock = prev.lowStockProducts.map(p => {
+          if (p.id === product.id) {
+            const updatedProduct = { ...p };
+            if (color && updatedProduct.sizeStock && updatedProduct.sizeStock[color]) {
+              const colorSizeCopy = { ...updatedProduct.sizeStock[color] };
+              colorSizeCopy[size] = parsedCount;
+              updatedProduct.sizeStock = {
+                ...updatedProduct.sizeStock,
+                [color]: colorSizeCopy
+              };
+            } else if (size && updatedProduct.sizeStock && updatedProduct.sizeStock[size] !== undefined) {
+              updatedProduct.sizeStock = {
+                ...updatedProduct.sizeStock,
+                [size]: parsedCount
+              };
+            } else if (color && updatedProduct.colorStock && updatedProduct.colorStock[color] !== undefined) {
+              updatedProduct.colorStock = {
+                ...updatedProduct.colorStock,
+                [color]: parsedCount
+              };
+            }
+            return updatedProduct;
+          }
+          return p;
+        });
+        return {
+          ...prev,
+          lowStockProducts: updatedLowStock
+        };
+      });
+
+      setDbProducts(prev => prev.map(p => {
+        if (p.id === product.id) {
+          return data.product;
+        }
+        return p;
+      }));
+
+      setRestockInputs(prev => {
+        const copy = { ...prev };
+        delete copy[key];
+        return copy;
+      });
+
+      setMessage({ type: 'success', text: `Successfully updated stock for ${product.name}!` });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: err.message || 'Something went wrong.' });
+    } finally {
+      setUpdatingStockKeys(prev => {
+        const copy = { ...prev };
+        delete copy[key];
+        return copy;
+      });
+    }
+  };
+
+  const handleEditFromDashboard = (product) => {
+    setActiveTab('products');
+    handleProductEdit(product);
+  };
 
   // --- Admin Product Management States ---
   const [dbProducts, setDbProducts] = useState([]);
@@ -49,21 +203,22 @@ const AdminUpload = () => {
   const [detailPreviews, setDetailPreviews] = useState([]);
 
 
-  // --- Banner Form States ---
-  const [bannerForm, setBannerForm] = useState({
-    title: '',
-    linkUrl: '',
-    order: '0',
-  });
-  const [bannerImage, setBannerImage] = useState(null);
-  const [bannerPreview, setBannerPreview] = useState('');
+  // --- Slideshow Banners Form States ---
+  const [slide1Image, setSlide1Image] = useState(null);
+  const [slide1Preview, setSlide1Preview] = useState('');
+  const [slide2Image, setSlide2Image] = useState(null);
+  const [slide2Preview, setSlide2Preview] = useState('');
   const [dbBanners, setDbBanners] = useState([]);
 
   // --- Category Collection Banners States ---
   const [dbCategoryBanners, setDbCategoryBanners] = useState([]);
-  const [uploadingCategory, setUploadingCategory] = useState(null);
   const [pendingFiles, setPendingFiles] = useState({ Women: null, Men: null });
   const [pendingPreviews, setPendingPreviews] = useState({ Women: null, Men: null });
+
+  // --- Cropping State & Ref ---
+  const [croppingSession, setCroppingSession] = useState(null);
+  const viewportRef = useRef(null);
+
 
 
   const sizeOptions = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
@@ -293,9 +448,8 @@ const AdminUpload = () => {
       fetchDashboardData();
     } else if (activeTab === 'products') {
       fetchDbProducts();
-    } else if (activeTab === 'banners') {
+    } else if (activeTab === 'homepage-media') {
       fetchDbBanners();
-    } else if (activeTab === 'categories') {
       fetchDbCategoryBanners();
     }
   }, [activeTab, token]);
@@ -645,55 +799,70 @@ const AdminUpload = () => {
   };
 
 
-  // --- Banner Handlers ---
-  const handleBannerChange = (e) => {
-    const { name, value } = e.target;
-    setBannerForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleBannerImage = (e) => {
+  // --- Banner & Slideshow Handlers ---
+  const handleBannerImageSelect = (e, slot) => {
     const file = e.target.files[0];
     if (file) {
-      setBannerImage(file);
-      setBannerPreview(URL.createObjectURL(file));
+      const objectUrl = URL.createObjectURL(file);
+      setCroppingSession({
+        file,
+        category: `slide${slot}`,
+        previewUrl: objectUrl,
+        zoom: 1,
+        pan: { x: 0, y: 0 }
+      });
+      e.target.value = '';
     }
   };
 
-  const handleBannerSubmit = async (e) => {
+  const handleSlideshowSubmit = async (e) => {
     e.preventDefault();
-    if (!bannerImage) {
-      setMessage({ type: 'error', text: 'Please select a banner image.' });
+    if (!slide1Image || !slide2Image) {
+      setMessage({ type: 'error', text: 'Please select both Slide 1 and Slide 2 images to save.' });
       return;
     }
 
     setLoading(true);
     setMessage({ type: '', text: '' });
 
-    const formData = new FormData();
-    formData.append('title', bannerForm.title);
-    formData.append('linkUrl', bannerForm.linkUrl);
-    formData.append('order', bannerForm.order);
-    formData.append('image', bannerImage);
-
     try {
-      const response = await fetch(`${API_BASE}/api/banners`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to upload banner.');
+      if (slide1Image) {
+        const existingSlide1 = dbBanners.find(b => b.order === 1);
+        if (existingSlide1) {
+          // Delete old slide 1
+          await fetch(`${API_BASE}/api/banners/${existingSlide1.id}`, { method: 'DELETE' });
+        }
+        const formData1 = new FormData();
+        formData1.append('title', 'Slide 1');
+        formData1.append('order', '1');
+        formData1.append('image', slide1Image);
+        const res1 = await fetch(`${API_BASE}/api/banners`, { method: 'POST', body: formData1 });
+        if (!res1.ok) throw new Error('Failed to upload Slide 1.');
       }
 
-      setMessage({ type: 'success', text: 'Banner created successfully!' });
+      if (slide2Image) {
+        const existingSlide2 = dbBanners.find(b => b.order === 2);
+        if (existingSlide2) {
+          // Delete old slide 2
+          await fetch(`${API_BASE}/api/banners/${existingSlide2.id}`, { method: 'DELETE' });
+        }
+        const formData2 = new FormData();
+        formData2.append('title', 'Slide 2');
+        formData2.append('order', '2');
+        formData2.append('image', slide2Image);
+        const res2 = await fetch(`${API_BASE}/api/banners`, { method: 'POST', body: formData2 });
+        if (!res2.ok) throw new Error('Failed to upload Slide 2.');
+      }
 
-      // Reset
-      setBannerForm({ title: '', linkUrl: '', order: '0' });
-      setBannerImage(null);
-      setBannerPreview('');
-      fetchDbBanners(); // Reload list
+      setMessage({ type: 'success', text: 'Slideshow banners updated successfully!' });
+
+      // Reset local slide selections
+      setSlide1Image(null);
+      setSlide1Preview('');
+      setSlide2Image(null);
+      setSlide2Preview('');
+
+      fetchDbBanners();
     } catch (error) {
       console.error(error);
       setMessage({ type: 'error', text: error.message || 'Something went wrong.' });
@@ -702,11 +871,88 @@ const AdminUpload = () => {
     }
   };
 
+  // --- Collection Banners Handlers ---
   const handleFileSelect = (e, category) => {
     const file = e.target.files[0];
     if (file) {
-      setPendingFiles((prev) => ({ ...prev, [category]: file }));
-      setPendingPreviews((prev) => ({ ...prev, [category]: URL.createObjectURL(file) }));
+      const objectUrl = URL.createObjectURL(file);
+      setCroppingSession({
+        file,
+        category: `collection_${category}`,
+        previewUrl: objectUrl,
+        zoom: 1,
+        pan: { x: 0, y: 0 }
+      });
+      e.target.value = '';
+    }
+  };
+
+  const handleApplyCrop = () => {
+    if (!croppingSession || !croppingSession.imgDims || !croppingSession.viewportDims) return;
+
+    const { category, file, zoom, pan, imgDims, viewportDims, fitDims } = croppingSession;
+    
+    let targetW = 1920;
+    let targetH = 600;
+    if (category.startsWith('collection_')) {
+      targetW = 1000;
+      targetH = 1250;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+
+    const img = new Image();
+    img.onload = () => {
+      const scaleFactor = targetW / viewportDims.w;
+      
+      const drawW = fitDims.w * scaleFactor * zoom;
+      const drawH = fitDims.h * scaleFactor * zoom;
+
+      const centerX = targetW / 2 + pan.x * scaleFactor;
+      const centerY = targetH / 2 + pan.y * scaleFactor;
+
+      const drawX = centerX - drawW / 2;
+      const drawY = centerY - drawH / 2;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, targetW, targetH);
+
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const croppedFile = new File([blob], file.name, { type: file.type || 'image/jpeg' });
+          const croppedUrl = URL.createObjectURL(croppedFile);
+
+          if (category === 'slide1') {
+            setSlide1Image(croppedFile);
+            setSlide1Preview(croppedUrl);
+          } else if (category === 'slide2') {
+            setSlide2Image(croppedFile);
+            setSlide2Preview(croppedUrl);
+          } else if (category === 'collection_Women') {
+            setPendingFiles(prev => ({ ...prev, Women: croppedFile }));
+            setPendingPreviews(prev => ({ ...prev, Women: croppedUrl }));
+          } else if (category === 'collection_Men') {
+            setPendingFiles(prev => ({ ...prev, Men: croppedFile }));
+            setPendingPreviews(prev => ({ ...prev, Men: croppedUrl }));
+          }
+        }
+
+        URL.revokeObjectURL(croppingSession.previewUrl);
+        setCroppingSession(null);
+      }, file.type || 'image/jpeg', 0.95);
+    };
+    img.src = croppingSession.previewUrl;
+  };
+
+  const handleCancelCrop = () => {
+    if (croppingSession) {
+      URL.revokeObjectURL(croppingSession.previewUrl);
+      setCroppingSession(null);
     }
   };
 
@@ -715,43 +961,54 @@ const AdminUpload = () => {
     setPendingPreviews((prev) => ({ ...prev, [category]: null }));
   };
 
-  const saveCategoryBanner = async (category) => {
-    const file = pendingFiles[category];
-    if (!file) return;
+  const handleCollectionSubmit = async (e) => {
+    e.preventDefault();
+    if (!pendingFiles.Women || !pendingFiles.Men) {
+      setMessage({ type: 'error', text: 'Please select both Women and Men Collection images to save.' });
+      return;
+    }
 
-    setUploadingCategory(category);
     setLoading(true);
     setMessage({ type: '', text: '' });
 
-    const formData = new FormData();
-    formData.append('category', category);
-    formData.append('image', file);
-
     try {
-      const response = await fetch(`${API_BASE}/api/banners/categories`, {
-        method: 'POST',
-        body: formData,
-      });
+      if (pendingFiles.Women) {
+        const formData = new FormData();
+        formData.append('category', 'Women');
+        formData.append('image', pendingFiles.Women);
+        const response = await fetch(`${API_BASE}/api/banners/categories`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (!response.ok) throw new Error('Failed to update Women Collection banner.');
+      }
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || `Failed to update ${category} banner.`);
+      if (pendingFiles.Men) {
+        const formData = new FormData();
+        formData.append('category', 'Men');
+        formData.append('image', pendingFiles.Men);
+        const response = await fetch(`${API_BASE}/api/banners/categories`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (!response.ok) throw new Error('Failed to update Men Collection banner.');
       }
 
       setMessage({
         type: 'success',
-        text: `Successfully updated ${category} Collection banner image!`
+        text: 'Category collection banners updated successfully!'
       });
 
-      cancelPending(category);
-      fetchDbCategoryBanners(); // Refresh listings
+      // Clear pending
+      setPendingFiles({ Women: null, Men: null });
+      setPendingPreviews({ Women: null, Men: null });
+
+      fetchDbCategoryBanners();
     } catch (error) {
       console.error(error);
       setMessage({ type: 'error', text: error.message || 'Something went wrong.' });
     } finally {
       setLoading(false);
-      setUploadingCategory(null);
     }
   };
 
@@ -812,256 +1069,387 @@ const AdminUpload = () => {
   });
 
   return (
-    <div className="min-h-screen pt-24 pb-16 bg-white text-black font-roboto">
-      <div className="max-w-7xl mx-auto px-6">
-
-        {/* Navigation Tabs */}
-        <div className="flex gap-4 mb-8 border-b border-gray-200 pb-4 overflow-x-auto">
-          <button
-            onClick={() => handleTabChange('dashboard')}
-            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${activeTab === 'dashboard'
-                ? 'border-black text-black'
-                : 'border-transparent text-gray-400 hover:text-black'
-              }`}
-          >
-            Dashboard
-          </button>
-          <button
-            onClick={() => handleTabChange('products')}
-            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${activeTab === 'products'
-                ? 'border-black text-black'
-                : 'border-transparent text-gray-400 hover:text-black'
-              }`}
-          >
-            Manage Products
-          </button>
-          <button
-            onClick={() => handleTabChange('banners')}
-            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${activeTab === 'banners'
-                ? 'border-black text-black'
-                : 'border-transparent text-gray-400 hover:text-black'
-              }`}
-          >
-            Slideshow Banners
-          </button>
-          <button
-            onClick={() => handleTabChange('categories')}
-            className={`text-lg font-bold pb-2 border-b-2 transition-all duration-200 cursor-pointer whitespace-nowrap ${activeTab === 'categories'
-                ? 'border-black text-black'
-                : 'border-transparent text-gray-400 hover:text-black'
-              }`}
-          >
-            Collection Banners
-          </button>
+    <div className="flex flex-col md:flex-row min-h-screen bg-white text-black font-roboto pt-[72px]">
+      {/* Sticky Global Navigation Sidebar — White, matching storefront style */}
+      <aside className="w-full md:w-56 bg-white flex flex-col justify-between flex-shrink-0 border-r border-gray-150 sticky top-[72px] md:h-[calc(100vh-72px)] z-30">
+        {/* Brand Header */}
+        <div className="px-5 py-5 border-b border-gray-100">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Admin Portal</p>
         </div>
 
-        {/* Form Container */}
-        <div className="bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
-          {message.text && (
-            <div
-              className={`p-4 mb-6 rounded-lg text-sm font-semibold transition-all duration-300 ${message.type === 'success'
-                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                  : 'bg-rose-50 border border-rose-200 text-rose-800'
+        {/* Navigation Tabs */}
+        <nav className="flex-1 px-3 py-4 flex flex-row md:flex-col gap-0.5 overflow-x-auto md:overflow-x-visible">
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z" />
+              </svg>
+            )},
+            { id: 'products', label: 'Products', icon: (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            )},
+            { id: 'homepage-media', label: 'Slideshow & Collections', icon: (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2zM19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            )},
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 cursor-pointer whitespace-nowrap md:w-full text-left ${activeTab === tab.id
+                ? 'bg-black text-white'
+                : 'text-gray-500 hover:text-black hover:bg-gray-50'
                 }`}
             >
-              {message.text}
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* Profile Footer */}
+        <div className="p-4 border-t border-gray-100 hidden md:flex flex-col gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
+              {user.email?.charAt(0).toUpperCase() || 'A'}
             </div>
-          )}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-black truncate" title={user.email}>
+                {user.email}
+              </p>
+              <p className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Administrator</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              to="/"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 hover:text-black rounded-lg text-xs font-semibold transition border border-gray-200 hover:border-gray-400 cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+              Storefront
+            </Link>
+            <button
+              onClick={logout}
+              className="flex items-center justify-center p-1.5 bg-white hover:bg-gray-50 text-gray-400 hover:text-black rounded-lg text-xs font-semibold transition border border-gray-200 hover:border-gray-400 cursor-pointer"
+              title="Sign Out"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
 
-          {/* TAB 0: DASHBOARD OVERVIEW */}
-          {activeTab === 'dashboard' && (
-            <div className="space-y-8 font-roboto">
-              <div className="flex flex-col sm:flex-row justify-between sm:items-center pb-4 border-b border-gray-100 gap-4">
-                <h3 className="text-2xl font-bold text-gray-900">
-                  Dashboard Overview
-                </h3>
-                <div className="flex items-center gap-3 self-end sm:self-auto">
-                  {/* Time Filters */}
-                  <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-xs">
-                    {[
-                      { label: 'Today', value: 'Today' },
-                      { label: '7 Days', value: '7days' },
-                      { label: '30 Days', value: '30days' },
-                      { label: 'All Time', value: 'All' }
-                    ].map(filter => (
-                      <button
-                        type="button"
-                        key={filter.value}
-                        onClick={() => setTimeFilter(filter.value)}
-                        className={`px-3 py-1.5 rounded-md font-bold transition cursor-pointer ${
-                          timeFilter === filter.value
-                            ? 'bg-white text-black shadow-sm'
-                            : 'text-gray-400 hover:text-black'
-                        }`}
-                      >
-                        {filter.label}
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    onClick={fetchDashboardData}
-                    className="px-4 py-2 bg-gray-50 border border-gray-200 hover:border-black rounded-lg text-xs font-bold transition cursor-pointer focus:outline-none"
-                  >
-                    ↻ Refresh Data
-                  </button>
-                </div>
+      {/* Main Content Workspace */}
+      <main className="flex-1 w-full p-6 md:p-8 bg-white text-black overflow-y-auto font-roboto">
+        {/* Global Messages */}
+        {message.text && (
+          <div
+            className={`p-4 mb-6 rounded-xl text-sm font-semibold transition-all duration-300 ${message.type === 'success'
+              ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border border-rose-200 text-rose-800'
+              }`}
+          >
+            {message.text}
+          </div>
+        )}
+
+        {/* TAB 0: DASHBOARD OVERVIEW */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-8">
+            {/* Header Title Section */}
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center pb-6 border-b border-gray-250 gap-4">
+              <div>
+                <h2 className="text-3xl font-bold tracking-tight text-black">Dashboard Overview</h2>
+                <p className="text-xs text-gray-400 mt-1 font-roboto">Real-time statistics & store health report</p>
               </div>
+              <div className="flex items-center gap-3 self-end sm:self-auto">
+                {/* Time Filters */}
+                <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200 text-xs font-roboto">
+                  {[
+                    { label: 'Today', value: 'Today' },
+                    { label: '7 Days', value: '7days' },
+                    { label: '30 Days', value: '30days' },
+                    { label: 'All Time', value: 'All' }
+                  ].map(filter => (
+                    <button
+                      type="button"
+                      key={filter.value}
+                      onClick={() => setTimeFilter(filter.value)}
+                      className={`px-3 py-1.5 rounded-md font-semibold transition cursor-pointer ${timeFilter === filter.value
+                          ? 'bg-white text-black shadow-sm border border-gray-200'
+                          : 'text-gray-400 hover:text-black'
+                        }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={fetchDashboardData}
+                  className="px-4 py-2 bg-white border border-gray-200 hover:border-gray-400 rounded-lg text-xs font-semibold transition cursor-pointer focus:outline-none"
+                >
+                  ↻ Refresh Data
+                </button>
+              </div>
+            </div>
 
-              {dashboardLoading ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-4">
-                  <svg className="animate-spin h-8 w-8 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <p className="text-gray-500 text-sm">Loading store metrics...</p>
-                </div>
-              ) : dashboardError ? (
-                <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 text-sm rounded-lg">
-                  {dashboardError}
-                </div>
-              ) : (
-                <>
-                  {/* Metrics Cards Grid */}
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Sales</p>
-                      <p className="text-2xl font-bold text-gray-900 mt-1">
-                        ${activeMetrics.totalRevenue.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Orders Count</p>
-                      <p className="text-2xl font-bold text-gray-900 mt-1">
-                        {activeMetrics.totalOrders}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
-                      <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Paid Orders</p>
-                      <p className="text-2xl font-bold text-emerald-700 mt-1">
-                        {activeMetrics.paidCount}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl">
-                      <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">Pending Orders</p>
-                      <p className="text-2xl font-bold text-amber-700 mt-1">
-                        {activeMetrics.pendingCount}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 border border-gray-100 p-5 rounded-xl col-span-2 lg:col-span-1">
-                      <p className="text-xs font-bold text-indigo-650 uppercase tracking-wider">Avg Order Value</p>
-                      <p className="text-2xl font-bold text-indigo-700 mt-1">
-                        ${activeMetrics.aov.toFixed(2)}
-                      </p>
-                    </div>
+            {dashboardLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <svg className="animate-spin h-8 w-8 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p className="text-gray-500 text-sm">Loading store metrics...</p>
+              </div>
+            ) : dashboardError ? (
+              <div className="p-4 bg-gray-100 border border-gray-200 text-black text-sm rounded-xl">
+                {dashboardError}
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {/* Metrics Cards Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                  <div className="bg-white border border-gray-200 p-5 rounded-xl hover:shadow-sm transition">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Sales</p>
+                    <p className="text-2xl font-bold text-black mt-1.5 tracking-tight">
+                      ${activeMetrics.totalRevenue.toFixed(2)}
+                    </p>
                   </div>
+                  <div className="bg-white border border-gray-200 p-5 rounded-xl hover:shadow-sm transition">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Orders Count</p>
+                    <p className="text-2xl font-bold text-black mt-1.5 tracking-tight">
+                      {activeMetrics.totalOrders}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-gray-200 p-5 rounded-xl hover:shadow-sm transition">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Paid Orders</p>
+                    <p className="text-2xl font-bold text-black mt-1.5 tracking-tight">
+                      {activeMetrics.paidCount}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-gray-200 p-5 rounded-xl hover:shadow-sm transition">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pending Orders</p>
+                    <p className="text-2xl font-bold text-black mt-1.5 tracking-tight">
+                      {activeMetrics.pendingCount}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-gray-200 p-5 rounded-xl hover:shadow-sm transition col-span-2 lg:col-span-1">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Avg Order Value</p>
+                    <p className="text-2xl font-bold text-black mt-1.5 tracking-tight">
+                      ${activeMetrics.aov.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
 
-                  {/* Trend Chart */}
+                {/* Trend Chart Container */}
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <SalesTrendChart data={chartData} />
+                </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Orders Table */}
-                    <div className="lg:col-span-2 space-y-4">
-                      <h4 className="font-bold text-lg text-gray-900">Recent Orders</h4>
-                      {filteredOrders.length === 0 ? (
-                        <p className="text-gray-400 text-sm italic">No orders found.</p>
-                      ) : (
-                        <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                          <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                              <tr>
-                                <th className="p-4">Customer</th>
-                                <th className="p-4">Total</th>
-                                <th className="p-4">Status</th>
-                                <th className="p-4">Fulfillment</th>
-                                <th className="p-4">Date</th>
-                                <th className="p-4 text-center">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100 text-gray-700">
-                              {filteredOrders.slice(0, 10).map((order) => (
-                                <tr key={order.id} className="hover:bg-gray-50/50">
-                                  <td className="p-4 truncate max-w-[140px]" title={order.customerEmail}>
-                                    {order.customerEmail}
-                                  </td>
-                                  <td className="p-4 font-bold text-black">
-                                    ${order.totalAmount.toFixed(2)}
-                                  </td>
-                                  <td className="p-4">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                      order.status === 'PAID'
-                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                        : order.status === 'PENDING'
+                {/* Grid Split: Recent Orders and Low Stock Warnings */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Left Column: Recent Orders */}
+                  <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                      <h3 className="font-bold text-base text-black tracking-tight">Recent Orders</h3>
+                    </div>
+                    {filteredOrders.length === 0 ? (
+                      <p className="text-gray-400 text-sm italic">No orders found.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                            <tr>
+                              <th className="p-4">Customer</th>
+                              <th className="p-4">Total</th>
+                              <th className="p-4">Status</th>
+                              <th className="p-4">Fulfillment</th>
+                              <th className="p-4">Date</th>
+                              <th className="p-4 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 text-gray-600">
+                            {filteredOrders.slice(0, 10).map((order) => (
+                              <tr key={order.id} className="hover:bg-gray-50 transition">
+                                <td className="p-4 truncate max-w-[140px]" title={order.customerEmail}>
+                                  {order.customerEmail}
+                                </td>
+                                <td className="p-4 font-bold text-black">
+                                  ${order.totalAmount.toFixed(2)}
+                                </td>
+                                <td className="p-4">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${order.status === 'PAID'
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                      : order.status === 'PENDING'
                                         ? 'bg-amber-50 text-amber-700 border border-amber-100'
                                         : 'bg-rose-50 text-rose-700 border border-rose-100'
                                     }`}>
-                                      {order.status}
-                                    </span>
-                                  </td>
-                                  <td className="p-4">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                      order.status !== 'PAID'
-                                        ? 'bg-gray-100 text-gray-400 border border-gray-250'
-                                        : order.fulfillmentStatus === 'Delivered'
+                                    {order.status}
+                                  </span>
+                                </td>
+                                <td className="p-4">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${order.status !== 'PAID'
+                                      ? 'bg-gray-100 text-gray-400 border border-gray-250'
+                                      : order.fulfillmentStatus === 'Delivered'
                                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                                         : order.fulfillmentStatus === 'Shipped'
-                                        ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                                        : 'bg-rose-50 text-rose-700 border border-rose-100'
+                                          ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                                          : 'bg-rose-50 text-rose-700 border border-rose-100'
                                     }`}>
-                                      {order.status !== 'PAID' ? 'N/A' : (order.fulfillmentStatus || 'Unfulfilled')}
-                                    </span>
-                                  </td>
-                                  <td className="p-4 text-xs text-gray-400">
-                                    {new Date(order.createdAt).toLocaleDateString()}
-                                  </td>
-                                  <td className="p-4 text-center">
-                                    <button
-                                      onClick={() => setSelectedOrderForModal(order)}
-                                      className="px-3 py-1 bg-black text-white rounded text-[11px] font-bold tracking-wider hover:opacity-90 transition cursor-pointer"
-                                    >
-                                      View
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Stock Warnings */}
-                    <div className="space-y-4">
-                      <h4 className="font-bold text-lg text-gray-900">Low Stock Warnings</h4>
-                      {dashboardStats?.lowStockProducts?.length === 0 ? (
-                        <p className="text-emerald-600 text-sm font-semibold">✓ All product inventory is healthy.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {dashboardStats?.lowStockProducts?.map((p) => (
-                            <div key={p.id} className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
-                              <div className="min-w-0">
-                                <p className="font-bold text-xs text-gray-900 truncate" title={p.name}>
-                                  {p.name}
-                                </p>
-                                <p className="text-[10px] text-gray-400 mt-0.5">ID: {p.code}</p>
-                              </div>
-                              <span className={`px-2 py-1 rounded text-xs font-bold ${p.totalStock === 0
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : p.totalStock <= 5
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-gray-200 text-gray-800'
-                                }`}>
-                                {p.totalStock} left
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                                    {order.status !== 'PAID' ? 'N/A' : (order.fulfillmentStatus || 'Unfulfilled')}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-xs text-gray-400">
+                                  {new Date(order.createdAt).toLocaleDateString()}
+                                </td>
+                                <td className="p-4 text-center">
+                                  <button
+                                    onClick={() => setSelectedOrderForModal(order)}
+                                    className="px-3 py-1 bg-black text-white rounded text-[11px] font-bold tracking-wider hover:opacity-90 transition cursor-pointer"
+                                  >
+                                    View
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                </>
-              )}
-            </div>
-          )}
+
+                  {/* Right Column: Low Stock Warnings */}
+                  <div className="bg-white border border-gray-150 rounded-xl p-6 space-y-4">
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                      <h3 className="font-bold text-base text-black tracking-tight">Low Stock Warnings</h3>
+                    </div>
+                    {(() => {
+                      const lowStockVariants = getLowStockVariants(dashboardStats?.lowStockProducts);
+                      if (lowStockVariants.length === 0) {
+                        return (
+                          <div className="text-center py-6">
+                            <span className="text-3xl">🎉</span>
+                            <p className="text-emerald-600 text-sm font-bold mt-2">All product inventory is healthy.</p>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                          {lowStockVariants.map((variant, index) => {
+                            const key = `${variant.product.id}-${variant.color}-${variant.size}`;
+                            const currentValue = restockInputs[key] !== undefined ? restockInputs[key] : variant.count;
+                            const isUpdating = !!updatingStockKeys[key];
+                            const isChanged = currentValue !== variant.count;
+
+                            return (
+                              <div
+                                key={`${variant.product.id}-${variant.color}-${variant.size}-${index}`}
+                                className="flex items-center justify-between p-3.5 bg-gray-50 border border-gray-150 rounded-xl gap-3 hover:shadow-sm hover:border-gray-300 transition duration-200"
+                              >
+                                {/* Left Section: Thumbnail */}
+                                <div className="w-10 h-14 aspect-[3/4] rounded bg-white border border-gray-200 flex-shrink-0 overflow-hidden">
+                                  {variant.product.images?.[0] ? (
+                                    <img
+                                      src={variant.product.images[0]}
+                                      alt={variant.product.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-400 font-semibold bg-gray-200">
+                                      No Img
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Middle Section: Details */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-xs text-gray-900 truncate" title={variant.product.name}>
+                                    {variant.product.name}
+                                  </p>
+                                  <p className="text-[9px] text-gray-400 font-mono">SKU: {variant.product.code}</p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 text-[9px] font-bold rounded">
+                                      {variant.color && variant.color !== 'Default' ? `${variant.color} / ${variant.size}` : variant.size}
+                                    </span>
+                                    <span className={`text-[9px] font-bold ${variant.count === 0 ? 'text-rose-600' : 'text-amber-600'}`}>
+                                      ({variant.count} left)
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Right Section: Stepper restocker */}
+                                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                                  <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white">
+                                    <button
+                                      type="button"
+                                      disabled={isUpdating}
+                                      onClick={() => handleDecrement(key, currentValue)}
+                                      className="px-1.5 py-0.5 hover:bg-gray-100 text-gray-500 font-bold text-xs transition disabled:opacity-50 cursor-pointer"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="text"
+                                      disabled={isUpdating}
+                                      value={currentValue}
+                                      onChange={(e) => handleInputChange(key, e)}
+                                      className="w-8 text-center border-x border-gray-200 py-0.5 bg-white text-[10px] font-bold focus:outline-none text-black"
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={isUpdating}
+                                      onClick={() => handleIncrement(key, currentValue)}
+                                      className="px-1.5 py-0.5 hover:bg-gray-100 text-gray-500 font-bold text-xs transition disabled:opacity-50 cursor-pointer"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button
+                                      disabled={!isChanged || isUpdating || currentValue === ''}
+                                      onClick={() => handleUpdateStock(variant.product, variant.color, variant.size, currentValue)}
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide transition cursor-pointer ${isChanged && currentValue !== ''
+                                          ? 'bg-black text-white hover:opacity-90 active:scale-[0.98]'
+                                          : 'bg-white text-gray-400 border border-gray-200 cursor-not-allowed'
+                                        }`}
+                                    >
+                                      {isUpdating ? 'Saving...' : 'Update'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleEditFromDashboard(variant.product)}
+                                      className="p-1 text-gray-400 hover:text-black hover:bg-gray-100 border border-transparent hover:border-gray-200 rounded transition cursor-pointer"
+                                      title="Edit Product Details"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.8" stroke="currentColor" className="w-3 h-3">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* OTHER TABS IN WHITE CARD CONTAINER */}
+        {activeTab !== 'dashboard' && (
+          <div className="bg-white border border-gray-150 rounded-xl p-8">
+
           {/* TAB 1: PRODUCTS MANAGEMENT */}
           {activeTab === 'products' && (
             <div className="space-y-6 font-roboto">
@@ -1516,130 +1904,165 @@ const AdminUpload = () => {
               )}
             </div>
           )}
-
-          {/* TAB 2: BANNER MANAGEMENT */}
-          {activeTab === 'banners' && (
+          {activeTab === 'homepage-media' && (
             <div className="space-y-12">
-              {/* Form to Upload Banner */}
-              <form onSubmit={handleBannerSubmit} className="space-y-6">
-                <h3 className="text-2xl font-bold mb-6 text-gray-900">
-                  Upload New Banner Image
-                </h3>
+              <div className="pb-4 border-b border-gray-100 flex flex-col md:flex-row justify-between md:items-baseline">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">Homepage Banners</h3>
+                  <p className="text-xs text-gray-400 mt-1">Upload and manage media for the storefront homepage slideshow and collection sections.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSlideshowSubmit} className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-baseline gap-2 pt-2">
+                  <h4 className="text-base font-bold text-gray-900">1. Hero Slideshow Banners</h4>
+                  <span className="text-xs text-gray-400 font-medium">Select and save both Slide 1 and Slide 2 images together.</span>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Banner Title (Optional)</label>
-                    <input
-                      type="text"
-                      name="title"
-                      value={bannerForm.title}
-                      onChange={handleBannerChange}
-                      placeholder="e.g. Grand Prix Launch"
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Slideshow Order (Sorting Number)</label>
-                    <input
-                      type="number"
-                      name="order"
-                      value={bannerForm.order}
-                      onChange={handleBannerChange}
-                      placeholder="e.g. 0, 1, 2"
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Link Path/URL (Optional)</label>
-                  <input
-                    type="text"
-                    name="linkUrl"
-                    value={bannerForm.linkUrl}
-                    onChange={handleBannerChange}
-                    placeholder="e.g. /Women or /product/22225011172"
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Banner Image</label>
-                  <div className="flex items-center justify-center w-full">
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 hover:border-black rounded-xl cursor-pointer bg-gray-50 hover:bg-gray-100/50 transition-all duration-300">
-                      <div className="flex flex-col items-center justify-center pt-4 pb-4">
-                        <p className="mb-1 text-sm text-gray-600"><span className="font-semibold">Select Banner Image File</span></p>
-                        <p className="text-xs text-gray-400">Wide landscape aspect ratio (PNG, JPG, JPEG, WEBP)</p>
+                  {/* Slide 1 Slot */}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white p-5 space-y-4">
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                      <span className="text-sm font-extrabold text-black">Slide 1 Image</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-400 font-mono">1920 × 600px</span>
+                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
-                      <input type="file" accept="image/*" onChange={handleBannerImage} className="hidden" />
+                    </div>
+
+                    <label className="cursor-pointer block relative aspect-[21/9] bg-gray-50 border-2 border-dashed border-gray-200 hover:border-black rounded-lg overflow-hidden transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleBannerImageSelect(e, 1)}
+                        className="hidden"
+                      />
+                      
+                      {slide1Preview ? (
+                        <img src={slide1Preview} alt="Slide 1 Preview" className="w-full h-full object-cover" />
+                      ) : dbBanners.find(b => b.order === 1) ? (
+                        <img
+                          src={dbBanners.find(b => b.order === 1).imageUrl}
+                          alt="Current Slide 1"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4">
+                          <span className="text-2xl mb-1">📷</span>
+                          <span className="text-xs font-bold text-black">Select Slide 1 Image</span>
+                          <span className="text-[9px] text-gray-450 mt-0.5">Click to choose file</span>
+                        </div>
+                      )}
                     </label>
+
+                    <div className="text-xs space-y-1 text-gray-500 pt-1">
+                      {!slide1Preview && !dbBanners.find(b => b.order === 1) && (
+                        <p className="italic text-gray-400">No active Slide 1 banner override set.</p>
+                      )}
+                    </div>
+
+                    {slide1Preview && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSlide1Image(null);
+                          setSlide1Preview('');
+                        }}
+                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                      >
+                        Cancel Selection
+                      </button>
+                    )}
                   </div>
 
-                  {bannerPreview && (
-                    <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden bg-gray-50 p-2">
-                      <img src={bannerPreview} alt="banner-preview" className="w-full max-h-48 object-cover rounded-md" />
+                  {/* Slide 2 Slot */}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white p-5 space-y-4">
+                    <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                      <span className="text-sm font-extrabold text-black">Slide 2 Image</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-400 font-mono">1920 × 600px</span>
+                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
+                      </div>
                     </div>
-                  )}
+
+                    <label className="cursor-pointer block relative aspect-[21/9] bg-gray-50 border-2 border-dashed border-gray-200 hover:border-black rounded-lg overflow-hidden transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleBannerImageSelect(e, 2)}
+                        className="hidden"
+                      />
+                      
+                      {slide2Preview ? (
+                        <img src={slide2Preview} alt="Slide 2 Preview" className="w-full h-full object-cover" />
+                      ) : dbBanners.find(b => b.order === 2) ? (
+                        <img
+                          src={dbBanners.find(b => b.order === 2).imageUrl}
+                          alt="Current Slide 2"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4">
+                          <span className="text-2xl mb-1">📷</span>
+                          <span className="text-xs font-bold text-black">Select Slide 2 Image</span>
+                          <span className="text-[9px] text-gray-450 mt-0.5">Click to choose file</span>
+                        </div>
+                      )}
+                    </label>
+
+                    <div className="text-xs space-y-1 text-gray-500 pt-1">
+                      {!slide2Preview && !dbBanners.find(b => b.order === 2) && (
+                        <p className="italic text-gray-400">No active Slide 2 banner override set.</p>
+                      )}
+                    </div>
+
+                    {slide2Preview && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSlide2Image(null);
+                          setSlide2Preview('');
+                        }}
+                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                      >
+                        Cancel Selection
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-4">
                   <button
                     type="submit"
-                    disabled={loading}
-                    className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${loading ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
+                    disabled={loading || !slide1Image || !slide2Image}
+                    className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
+                      loading || !slide1Image || !slide2Image ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                   >
-                    {loading ? 'Uploading banner to Cloudinary...' : 'Upload Banner'}
+                    {loading ? 'Saving slideshow banners...' : 'Save Slideshow Banners (Both Required)'}
                   </button>
                 </div>
               </form>
+            {/* Section Divider */}
+            <hr className="my-12 border-gray-200" />
 
-              {/* List of Current Banners */}
-              <div className="border-t border-gray-200 pt-8">
-                <h3 className="text-2xl font-bold mb-6 text-gray-900">Active Banners</h3>
-
-                {dbBanners.length === 0 ? (
-                  <p className="text-gray-400 italic">No dynamic banners in the database. Using local defaults on home page.</p>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {dbBanners.map((banner) => (
-                      <div key={banner.id} className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col justify-between">
-                        <div className="aspect-[21/9] bg-black">
-                          <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="p-4 space-y-2 flex-grow flex flex-col justify-between bg-white text-black">
-                          <div>
-                            <p className="font-bold text-lg text-gray-900">{banner.title || 'Untitled Banner'}</p>
-                            <p className="text-sm text-gray-500">Order: {banner.order} | Link: {banner.linkUrl || 'None'}</p>
-                          </div>
-                          <button
-                            onClick={() => deleteBanner(banner.id)}
-                            className="w-full mt-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition cursor-pointer"
-                          >
-                            Delete Banner
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: CATEGORY COLLECTION BANNERS */}
-          {activeTab === 'categories' && (
-            <div className="space-y-8">
-              <div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Manage Homepage Category Banners</h3>
-                <p className="text-sm text-gray-500">
-                  Click directly on either card below to select a local image file and replace the collection banner.
-                </p>
+            <form onSubmit={handleCollectionSubmit} className="space-y-6">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-baseline gap-2">
+                <h4 className="text-base font-bold text-gray-900">2. Homepage Collection Banners</h4>
+                <span className="text-xs text-gray-400 font-medium">Select and save both Women and Men Collection images together.</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Women Collection Card */}
-                <div className="group relative border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col justify-between hover:border-black transition-colors duration-300">
+                <div className="group relative border border-gray-200 bg-white p-5 flex flex-col justify-between hover:border-black transition-colors duration-300 rounded-xl">
+                  <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-4">
+                    <span className="text-sm font-extrabold text-black">Women Collection</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
+                      <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
+                    </div>
+                  </div>
+
                   <label className="cursor-pointer block relative">
                     <input
                       type="file"
@@ -1648,12 +2071,12 @@ const AdminUpload = () => {
                       className="hidden"
                       disabled={loading}
                     />
-                    <div className="aspect-[4/5] bg-gray-100 flex items-center justify-center overflow-hidden relative">
+                    <div className="aspect-[4/5] bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center overflow-hidden relative">
                       {pendingPreviews.Women ? (
                         <img
                           src={pendingPreviews.Women}
                           alt="Women Collection Pending Banner"
-                          className="w-full h-full object-cover border-2 border-dashed border-black"
+                          className="w-full h-full object-cover"
                         />
                       ) : dbCategoryBanners.find(b => b.category === 'Women') ? (
                         <img
@@ -1662,83 +2085,65 @@ const AdminUpload = () => {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="text-center p-6 text-gray-400">
-                          <span className="block text-4xl mb-2">📷</span>
-                          <span className="text-sm font-semibold">Using Default Image</span>
-                          <span className="block text-xs mt-1">(Home Page Fallback: 8J6A0448.jpg)</span>
+                        <div className="w-full h-full relative">
+                          <img
+                            src={defaultWomen}
+                            alt="Women Collection Default Banner"
+                            className="w-full h-full object-cover opacity-60"
+                          />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10">
+                            <span className="bg-black/75 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                              Default Active
+                            </span>
+                          </div>
                         </div>
                       )}
 
                       {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white">
-                        <span className="text-3xl mb-2">📸</span>
-                        <span className="text-sm font-semibold">
-                          {pendingPreviews.Women ? 'Click to Change Image' : 'Click to Replace Image'}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white">
+                        <span className="text-2xl mb-2">📸</span>
+                        <span className="text-xs font-bold">
+                          Click to Change
                         </span>
                       </div>
-
-                      {/* Loading Overlay */}
-                      {uploadingCategory === 'Women' && (
-                        <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center text-black z-10">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mb-2 animate-bounce"></div>
-                          <span className="text-xs font-bold uppercase tracking-wider">Uploading...</span>
-                        </div>
-                      )}
                     </div>
                   </label>
 
-                  <div className="p-4 bg-white border-t border-gray-100">
-                    <span className="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-full mb-1">
-                      Women Collection
-                    </span>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {pendingPreviews.Women ? (
-                        <span className="text-amber-600 font-semibold">⚠️ Pending Replacement</span>
-                      ) : dbCategoryBanners.find(b => b.category === 'Women') ? (
-                        'Custom banner active in database'
-                      ) : (
-                        'Currently using storefront asset placeholder'
-                      )}
-                    </p>
-
-                    {/* Action Buttons for Pending State */}
-                    {pendingFiles.Women && (
-                      <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
-                        <button
-                          type="button"
-                          onClick={() => saveCategoryBanner('Women')}
-                          disabled={loading}
-                          className="flex-1 py-2 bg-black hover:bg-neutral-800 text-white font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer"
-                        >
-                          Confirm Save
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => cancelPending('Women')}
-                          disabled={loading}
-                          className="px-3 py-2 border border-gray-200 hover:border-black text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-
+                  <div className="bg-white pt-3 space-y-3">
                     {/* Restore to Default Button */}
-                    {!pendingFiles.Women && dbCategoryBanners.find(b => b.category === 'Women') && (
+                    {!pendingPreviews.Women && dbCategoryBanners.find(b => b.category === 'Women') && (
                       <button
                         type="button"
                         onClick={() => deleteCategoryBanner('Women')}
                         disabled={loading}
-                        className="w-full mt-4 py-2 border border-red-200 hover:border-red-600 text-red-600 hover:text-red-700 font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer"
+                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-gray-505 hover:text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
                       >
-                        Restore Default Image
+                        Restore Default
+                      </button>
+                    )}
+
+                    {pendingPreviews.Women && (
+                      <button
+                        type="button"
+                        onClick={() => cancelPending('Women')}
+                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                      >
+                        Cancel Selection
                       </button>
                     )}
                   </div>
                 </div>
 
                 {/* Men Collection Card */}
-                <div className="group relative border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col justify-between hover:border-black transition-colors duration-300">
+                <div className="group relative border border-gray-200 bg-white p-5 flex flex-col justify-between hover:border-black transition-colors duration-300 rounded-xl">
+                  <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-4">
+                    <span className="text-sm font-extrabold text-black">Men Collection</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
+                      <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
+                    </div>
+                  </div>
+
                   <label className="cursor-pointer block relative">
                     <input
                       type="file"
@@ -1747,12 +2152,12 @@ const AdminUpload = () => {
                       className="hidden"
                       disabled={loading}
                     />
-                    <div className="aspect-[4/5] bg-gray-100 flex items-center justify-center overflow-hidden relative">
+                    <div className="aspect-[4/5] bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center overflow-hidden relative">
                       {pendingPreviews.Men ? (
                         <img
                           src={pendingPreviews.Men}
                           alt="Men Collection Pending Banner"
-                          className="w-full h-full object-cover border-2 border-dashed border-black"
+                          className="w-full h-full object-cover"
                         />
                       ) : dbCategoryBanners.find(b => b.category === 'Men') ? (
                         <img
@@ -1761,85 +2166,73 @@ const AdminUpload = () => {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="text-center p-6 text-gray-400">
-                          <span className="block text-4xl mb-2">📷</span>
-                          <span className="text-sm font-semibold">Using Default Image</span>
-                          <span className="block text-xs mt-1">(Home Page Fallback: 8J6A0460.jpg)</span>
+                        <div className="w-full h-full relative">
+                          <img
+                            src={defaultMen}
+                            alt="Men Collection Default Banner"
+                            className="w-full h-full object-cover opacity-60"
+                          />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10">
+                            <span className="bg-black/75 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                              Default Active
+                            </span>
+                          </div>
                         </div>
                       )}
 
                       {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white">
-                        <span className="text-3xl mb-2">📸</span>
-                        <span className="text-sm font-semibold">
-                          {pendingPreviews.Men ? 'Click to Change Image' : 'Click to Replace Image'}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white">
+                        <span className="text-2xl mb-2">📸</span>
+                        <span className="text-xs font-bold">
+                          Click to Change
                         </span>
                       </div>
-
-                      {/* Loading Overlay */}
-                      {uploadingCategory === 'Men' && (
-                        <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center text-black z-10">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mb-2 animate-bounce"></div>
-                          <span className="text-xs font-bold uppercase tracking-wider">Uploading...</span>
-                        </div>
-                      )}
                     </div>
                   </label>
 
-                  <div className="p-4 bg-white border-t border-gray-100">
-                    <span className="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-full mb-1">
-                      Men Collection
-                    </span>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {pendingPreviews.Men ? (
-                        <span className="text-amber-600 font-semibold">⚠️ Pending Replacement</span>
-                      ) : dbCategoryBanners.find(b => b.category === 'Men') ? (
-                        'Custom banner active in database'
-                      ) : (
-                        'Currently using storefront asset placeholder'
-                      )}
-                    </p>
-
-                    {/* Action Buttons for Pending State */}
-                    {pendingFiles.Men && (
-                      <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
-                        <button
-                          type="button"
-                          onClick={() => saveCategoryBanner('Men')}
-                          disabled={loading}
-                          className="flex-1 py-2 bg-black hover:bg-neutral-800 text-white font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer"
-                        >
-                          Confirm Save
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => cancelPending('Men')}
-                          disabled={loading}
-                          className="px-3 py-2 border border-gray-200 hover:border-black text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-
+                  <div className="bg-white pt-3 space-y-3">
                     {/* Restore to Default Button */}
-                    {!pendingFiles.Men && dbCategoryBanners.find(b => b.category === 'Men') && (
+                    {!pendingPreviews.Men && dbCategoryBanners.find(b => b.category === 'Men') && (
                       <button
                         type="button"
                         onClick={() => deleteCategoryBanner('Men')}
                         disabled={loading}
-                        className="w-full mt-4 py-2 border border-red-200 hover:border-red-600 text-red-600 hover:text-red-700 font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer"
+                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-gray-550 hover:text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
                       >
-                        Restore Default Image
+                        Restore Default
+                      </button>
+                    )}
+
+                    {pendingPreviews.Men && (
+                      <button
+                        type="button"
+                        onClick={() => cancelPending('Men')}
+                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                      >
+                        Cancel Selection
                       </button>
                     )}
                   </div>
                 </div>
               </div>
+
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  disabled={loading || !pendingFiles.Women || !pendingFiles.Men}
+                  className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
+                    loading || !pendingFiles.Women || !pendingFiles.Men ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {loading ? 'Saving collection banners...' : 'Save Collection Banners (Both Required)'}
+                </button>
+              </div>
+            </form>
             </div>
           )}
-        </div>
-      </div>
+          </div>
+        )}
+      </main>
 
       {/* Order Details popup Modal */}
       {selectedOrderForModal && (
@@ -1957,6 +2350,191 @@ const AdminUpload = () => {
             <div className="mt-6 pt-4 border-t border-gray-150 flex justify-between items-center text-base">
               <span className="font-bold text-gray-800">Total Amount Paid:</span>
               <span className="font-extrabold text-black">${selectedOrderForModal.totalAmount.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Cropping Modal */}
+      {croppingSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center font-roboto">
+          {/* Backdrop */}
+          <div
+            onClick={handleCancelCrop}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          />
+
+          {/* Modal Card */}
+          <div className="relative w-full max-w-2xl bg-white p-6 rounded-2xl shadow-2xl overflow-y-auto max-h-[90vh] mx-4 z-10 text-sm flex flex-col gap-5">
+            <button
+              type="button"
+              onClick={handleCancelCrop}
+              className="absolute top-4 right-4 text-gray-400 hover:text-black transition p-2 cursor-pointer focus:outline-none"
+              aria-label="Close cropper"
+            >
+              ✕
+            </button>
+
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">
+                Crop Your Banner
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                {croppingSession.category.startsWith('slide')
+                  ? 'Slideshow Banner — Required aspect ratio ~3.2:1 (1920 × 600px)'
+                  : 'Collection Banner — Required aspect ratio 4:5 (1000 × 1250px)'}
+              </p>
+            </div>
+
+            {/* Viewport Frame */}
+            <div className="relative w-full flex justify-center bg-gray-50 border border-gray-150 rounded-xl p-4">
+              <div
+                ref={viewportRef}
+                className="relative w-full max-h-[350px] overflow-hidden bg-gray-200 border border-gray-300 rounded-lg select-none cursor-grab active:cursor-grabbing"
+                style={{
+                  aspectRatio: croppingSession.category.startsWith('slide') ? '3.2 / 1' : '4 / 5'
+                }}
+                onMouseDown={(e) => {
+                  if (!croppingSession.fitDims) return;
+                  setCroppingSession(prev => ({
+                    ...prev,
+                    isDragging: true,
+                    dragStart: { x: e.clientX - prev.pan.x, y: e.clientY - prev.pan.y }
+                  }));
+                }}
+                onMouseMove={(e) => {
+                  if (!croppingSession.isDragging) return;
+                  const newX = e.clientX - croppingSession.dragStart.x;
+                  const newY = e.clientY - croppingSession.dragStart.y;
+                  setCroppingSession(prev => ({
+                    ...prev,
+                    pan: { x: newX, y: newY }
+                  }));
+                }}
+                onMouseUp={() => {
+                  setCroppingSession(prev => ({ ...prev, isDragging: false }));
+                }}
+                onMouseLeave={() => {
+                  setCroppingSession(prev => ({ ...prev, isDragging: false }));
+                }}
+                onTouchStart={(e) => {
+                  if (!croppingSession.fitDims || e.touches.length === 0) return;
+                  const touch = e.touches[0];
+                  setCroppingSession(prev => ({
+                    ...prev,
+                    isDragging: true,
+                    dragStart: { x: touch.clientX - prev.pan.x, y: touch.clientY - prev.pan.y }
+                  }));
+                }}
+                onTouchMove={(e) => {
+                  if (!croppingSession.isDragging || e.touches.length === 0) return;
+                  const touch = e.touches[0];
+                  const newX = touch.clientX - croppingSession.dragStart.x;
+                  const newY = touch.clientY - croppingSession.dragStart.y;
+                  setCroppingSession(prev => ({
+                    ...prev,
+                    pan: { x: newX, y: newY }
+                  }));
+                }}
+                onTouchEnd={() => {
+                  setCroppingSession(prev => ({ ...prev, isDragging: false }));
+                }}
+              >
+                <img
+                  src={croppingSession.previewUrl}
+                  alt="Crop preview source"
+                  className="absolute origin-center select-none pointer-events-none max-w-none"
+                  style={{
+                    width: croppingSession.fitDims ? `${croppingSession.fitDims.w}px` : 'auto',
+                    height: croppingSession.fitDims ? `${croppingSession.fitDims.h}px` : 'auto',
+                    left: '50%',
+                    top: '50%',
+                    transform: `translate(-50%, -50%) translate(${croppingSession.pan.x}px, ${croppingSession.pan.y}px) scale(${croppingSession.zoom})`,
+                  }}
+                  onLoad={(e) => {
+                    const imgEl = e.target;
+                    const container = viewportRef.current;
+                    if (container) {
+                      const vW = container.offsetWidth;
+                      const vH = container.offsetHeight;
+                      const imgW = imgEl.naturalWidth;
+                      const imgH = imgEl.naturalHeight;
+                      const baseScale = Math.max(vW / imgW, vH / imgH);
+                      setCroppingSession(prev => ({
+                        ...prev,
+                        imgDims: { w: imgW, h: imgH },
+                        viewportDims: { w: vW, h: vH },
+                        fitDims: { w: imgW * baseScale, h: imgH * baseScale }
+                      }));
+                    }
+                  }}
+                />
+
+                {/* Center target guide box overlay */}
+                <div className="absolute inset-0 border-2 border-dashed border-white/50 pointer-events-none flex items-center justify-center">
+                  <div className="text-white/60 text-[10px] uppercase font-bold tracking-wider bg-black/30 px-2.5 py-1 rounded backdrop-blur-[2px]">
+                    Drag to position banner
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Slider zoom and offset info */}
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between text-xs font-semibold text-gray-500">
+                <span>Zoom Level: {Math.round(croppingSession.zoom * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCroppingSession(prev => ({
+                      ...prev,
+                      zoom: 1,
+                      pan: { x: 0, y: 0 }
+                    }));
+                  }}
+                  className="text-black hover:underline cursor-pointer"
+                >
+                  Reset Zoom & Position
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-lg">🔍−</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.01"
+                  value={croppingSession.zoom}
+                  onChange={(e) => {
+                    const nextZoom = parseFloat(e.target.value);
+                    setCroppingSession(prev => ({
+                      ...prev,
+                      zoom: nextZoom
+                    }));
+                  }}
+                  className="flex-1 accent-black h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <span className="text-lg">🔍+</span>
+              </div>
+            </div>
+
+            {/* Modal Controls */}
+            <div className="flex gap-3 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={handleApplyCrop}
+                disabled={!croppingSession.fitDims}
+                className="flex-1 py-3 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Apply Crop & Set Preview
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelCrop}
+                className="px-6 py-3 border border-gray-200 hover:border-black text-black font-semibold rounded-lg transition cursor-pointer"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

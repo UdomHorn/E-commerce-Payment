@@ -37,6 +37,13 @@ router.post('/create-payment-intent', async (req, res) => {
         return res.status(404).json({ error: `Product with ID ${item.productId} not found.` });
       }
 
+      if (item.quantity > 20) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: `Quantity limit exceeded: Maximum 20 units allowed per item for "${product.name}".`
+        });
+      }
+
       const itemPrice = product.price;
 
       // Validate size stock if it is set in database
@@ -48,10 +55,11 @@ router.post('/create-payment-intent', async (req, res) => {
           availableSizeStock = product.sizeStock[item.selectedSize];
         }
 
-        if (availableSizeStock !== undefined && parseInt(availableSizeStock, 10) < item.quantity) {
+        const parsedSizeStock = availableSizeStock !== undefined ? parseInt(availableSizeStock, 10) : 0;
+        if (parsedSizeStock < item.quantity) {
           await transaction.rollback();
           return res.status(400).json({
-            error: `Insufficient stock for "${product.name}" (Size: ${item.selectedSize}). Available: ${availableSizeStock}`
+            error: `Insufficient stock for "${product.name}" (Size: ${item.selectedSize}). Available: ${parsedSizeStock}`
           });
         }
 
@@ -76,10 +84,11 @@ router.post('/create-payment-intent', async (req, res) => {
       // Validate color stock if it is set in database
       if (product.colorStock && item.selectedColor) {
         const availableColorStock = product.colorStock[item.selectedColor];
-        if (availableColorStock !== undefined && parseInt(availableColorStock, 10) < item.quantity) {
+        const parsedColorStock = availableColorStock !== undefined ? parseInt(availableColorStock, 10) : 0;
+        if (parsedColorStock < item.quantity) {
           await transaction.rollback();
           return res.status(400).json({
-            error: `Insufficient stock for "${product.name}" (Color: ${item.selectedColor}). Available: ${availableColorStock}`
+            error: `Insufficient stock for "${product.name}" (Color: ${item.selectedColor}). Available: ${parsedColorStock}`
           });
         }
 
@@ -237,10 +246,7 @@ router.get('/dashboard-stats', authMiddleware, adminMiddleware, async (req, res)
 
       if (totalStock <= 10) {
         lowStockProducts.push({
-          id: product.id,
-          name: product.name,
-          code: product.code,
-          category: product.category,
+          ...product.toJSON(),
           totalStock
         });
       }

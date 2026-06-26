@@ -228,7 +228,7 @@ const Nav = () => {
   }, [searchQuery]);
 
   return (
-    <div className='fixed w-full top-0 left-0 z-10 print:hidden'>
+    <div className='fixed w-full top-0 left-0 z-40 print:hidden'>
       <div 
         className='w-full bg-white flex flex-col items-center relative'
         onMouseLeave={() => setActiveDropdown(null)}

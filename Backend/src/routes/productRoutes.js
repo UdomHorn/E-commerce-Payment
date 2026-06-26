@@ -122,6 +122,32 @@ router.get('/', async (req, res) => {
   }
 });
 
+// @route   POST /api/products/sync-stock
+// @desc    Get stock levels for multiple product IDs
+// @access  Public
+router.post('/sync-stock', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: 'Invalid product IDs list.' });
+    }
+
+    const products = await Product.findAll({
+      where: {
+        id: {
+          [Op.in]: ids
+        }
+      },
+      attributes: ['id', 'name', 'sizeStock', 'colorStock']
+    });
+
+    res.json(products);
+  } catch (error) {
+    console.error('Error syncing stocks:', error);
+    res.status(500).json({ error: 'Server error syncing stocks.' });
+  }
+});
+
 // @route   GET /api/products/:id
 // @desc    Get product by ID or SKU code
 // @access  Public
@@ -245,6 +271,59 @@ router.put(
     } catch (error) {
       console.error('Error updating product:', error);
       res.status(500).json({ error: 'Server error updating product.' });
+    }
+  }
+);
+
+// @route   PUT /api/products/:id/stock
+// @desc    Quickly update stock for a product variant (Admin only)
+// @access  Private/Admin
+router.put(
+  '/:id/stock',
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { color, size, count } = req.body;
+
+      const product = await Product.findByPk(id);
+      if (!product) {
+        return res.status(404).json({ error: 'Product not found.' });
+      }
+
+      const updatedSizeStock = product.sizeStock ? { ...product.sizeStock } : {};
+      const updatedColorStock = product.colorStock ? { ...product.colorStock } : {};
+      const parsedCount = Math.max(0, parseInt(count, 10) || 0);
+
+      if (color && updatedSizeStock[color]) {
+        // Nested: sizeStock[color][size]
+        const colorSizes = { ...updatedSizeStock[color] };
+        colorSizes[size] = parsedCount;
+        updatedSizeStock[color] = colorSizes;
+
+        // Recalculate colorStock for this color
+        updatedColorStock[color] = Object.values(colorSizes).reduce(
+          (sum, v) => sum + (parseInt(v, 10) || 0),
+          0
+        );
+      } else if (size && updatedSizeStock[size] !== undefined) {
+        // Flat sizeStock
+        updatedSizeStock[size] = parsedCount;
+      } else if (color) {
+        // colorStock only fallback
+        updatedColorStock[color] = parsedCount;
+      }
+
+      await product.update({
+        sizeStock: updatedSizeStock,
+        colorStock: updatedColorStock
+      });
+
+      res.json({ message: 'Stock updated successfully.', product });
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      res.status(500).json({ error: 'Server error updating stock.' });
     }
   }
 );
