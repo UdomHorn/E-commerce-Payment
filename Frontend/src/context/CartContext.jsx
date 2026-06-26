@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import API_BASE from '../config';
 
 const CartContext = createContext();
 
@@ -23,6 +24,10 @@ export const CartProvider = ({ children }) => {
       maxStock = parseInt(product.sizeStock[selectedSize], 10) || 0;
     }
 
+    if (maxStock <= 0) {
+      return;
+    }
+
     setCart((prev) => {
       // Find if item already exists with same size/color
       const existingIdx = prev.findIndex(
@@ -35,7 +40,8 @@ export const CartProvider = ({ children }) => {
       if (existingIdx > -1) {
         const updated = [...prev];
         const newQty = updated[existingIdx].quantity + quantity;
-        updated[existingIdx].quantity = maxStock > 0 ? Math.min(newQty, maxStock) : newQty;
+        const limit = maxStock > 0 ? Math.min(maxStock, 20) : 20;
+        updated[existingIdx].quantity = Math.min(newQty, limit);
         return updated;
       }
 
@@ -48,7 +54,7 @@ export const CartProvider = ({ children }) => {
           image: product.images && product.images[0],
           selectedSize,
           selectedColor,
-          quantity: maxStock > 0 ? Math.min(quantity, maxStock) : quantity,
+          quantity: Math.min(quantity, maxStock > 0 ? Math.min(maxStock, 20) : 20),
           maxStock,
         },
       ];
@@ -84,7 +90,8 @@ export const CartProvider = ({ children }) => {
         const updated = [...prev];
         const item = updated[idx];
         const maxStock = item.maxStock || 0;
-        updated[idx].quantity = maxStock > 0 ? Math.min(qty, maxStock) : qty;
+        const limit = maxStock > 0 ? Math.min(maxStock, 20) : 20;
+        updated[idx].quantity = Math.min(qty, limit);
         return updated;
       }
       return prev;
@@ -101,6 +108,51 @@ export const CartProvider = ({ children }) => {
     return cart.reduce((count, item) => count + item.quantity, 0);
   };
 
+  const syncCartStock = async () => {
+    if (cart.length === 0) return;
+    try {
+      const ids = [...new Set(cart.map(item => item.id))];
+      const response = await fetch(`${API_BASE}/api/products/sync-stock`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ids })
+      });
+
+      if (response.ok) {
+        const products = await response.json();
+        setCart((prev) => {
+          let changed = false;
+          const updated = prev.map(item => {
+            const freshProduct = products.find(p => p.id === item.id);
+            if (freshProduct) {
+              let freshMaxStock = 0;
+              if (freshProduct.sizeStock && item.selectedColor && freshProduct.sizeStock[item.selectedColor]) {
+                freshMaxStock = parseInt(freshProduct.sizeStock[item.selectedColor][item.selectedSize], 10) || 0;
+              } else if (freshProduct.sizeStock && item.selectedSize) {
+                freshMaxStock = parseInt(freshProduct.sizeStock[item.selectedSize], 10) || 0;
+              }
+
+              const newMaxStock = freshMaxStock;
+              const limit = newMaxStock > 0 ? Math.min(newMaxStock, 20) : 0; // limit is 0 if stock is 0
+              const finalQty = Math.max(0, Math.min(item.quantity, limit));
+
+              if (item.maxStock !== newMaxStock || item.quantity !== finalQty) {
+                changed = true;
+                return { ...item, maxStock: newMaxStock, quantity: finalQty };
+              }
+            }
+            return item;
+          });
+          return changed ? updated : prev;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync cart stock:', err);
+    }
+  };
+
   return (
     <CartContext.Provider
       value={{
@@ -111,6 +163,7 @@ export const CartProvider = ({ children }) => {
         clearCart,
         getCartTotal,
         getCartCount,
+        syncCartStock,
       }}
     >
       {children}
