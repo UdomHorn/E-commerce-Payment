@@ -160,6 +160,18 @@ router.post('/forgot-password', async (req, res) => {
       });
     }
 
+    // Rate limit: block if OTP was sent less than 60 seconds ago
+    if (user.otpExpires) {
+      const otpIssuedAt = new Date(user.otpExpires).getTime() - 15 * 60 * 1000; // reverse-calculate issue time
+      const secondsSinceLastOtp = (Date.now() - otpIssuedAt) / 1000;
+      if (secondsSinceLastOtp < 60) {
+        const waitSeconds = Math.ceil(60 - secondsSinceLastOtp);
+        return res.status(429).json({
+          error: `Please wait ${waitSeconds} seconds before requesting another verification code.`,
+        });
+      }
+    }
+
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes expiry

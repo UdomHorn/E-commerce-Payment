@@ -108,6 +108,7 @@ const AuthModal = () => {
         if (data.error && data.error.includes('Google Sign-In')) {
           setIsGoogleAccount(true);
         } else {
+          // Show rate-limit or other errors directly (e.g. "Please wait 45 seconds...")
           setError(data.error || 'Failed to send OTP code.');
         }
       } else {
