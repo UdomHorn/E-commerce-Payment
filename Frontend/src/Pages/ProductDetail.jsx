@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import Qty from '../assets/Components/Qty';
 import AddtoBag from '../assets/Components/AddtoBag';
 import Size from '../assets/Components/Size';
 import ColorAvailable from '../assets/Components/ColorAvailable';
@@ -24,9 +23,9 @@ const ProductDetail = () => {
   // Selection & UI states
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
-  const [qty, setQty] = useState(1);
   const [addedAlert, setAddedAlert] = useState(false);
   const [isSizeGuideOpen, setIsSizeGuideOpen] = useState(false);
+  const [sizeShake, setSizeShake] = useState(false); // triggers shake when no size selected
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -118,10 +117,12 @@ const ProductDetail = () => {
     }
   }, [selectedColor, product]);
 
-  // Reset qty to 1 whenever size or color changes to prevent carrying over invalid qty
+  // Reset sizeShake flag after animation completes
   useEffect(() => {
-    setQty(1);
-  }, [selectedSize, selectedColor]);
+    if (!sizeShake) return;
+    const timer = setTimeout(() => setSizeShake(false), 400);
+    return () => clearTimeout(timer);
+  }, [sizeShake]);
 
   // Auto-dismiss add to bag popup after 4 seconds
   useEffect(() => {
@@ -134,8 +135,12 @@ const ProductDetail = () => {
 
   const handleAddToBag = () => {
     if (!product) return;
-    
-    addToCart(product, qty, selectedSize, selectedColor);
+    // H&M-style: validate size is selected before adding
+    if (!selectedSize) {
+      setSizeShake(true);
+      return;
+    }
+    addToCart(product, 1, selectedSize, selectedColor);
     setAddedAlert(true);
   };
 
@@ -337,65 +342,63 @@ const ProductDetail = () => {
           </div>
 
           {/* Color Selector */}
-          <ColorAvailable 
-            colors={availableColors} 
-            selectedColor={selectedColor} 
-            onSelectColor={setSelectedColor} 
+          {/* Color Selector */}
+          <ColorAvailable
+            colors={availableColors}
+            selectedColor={selectedColor}
+            onSelectColor={setSelectedColor}
           />
 
-          {/* Size Selector */}
-          <Size 
-            sizes={availableSizes} 
-            selectedSize={selectedSize} 
-            onSelectSize={setSelectedSize} 
+          {/* Size Selector — H&M style: shows all sizes including out-of-stock */}
+          <Size
+            allSizes={sizes}
+            sizes={availableSizes}
+            selectedSize={selectedSize}
+            onSelectSize={(s) => { setSelectedSize(s); setSizeShake(false); }}
             modelInfo={modelInfo}
             sizeStockMap={sizeStockMap}
+            onOpenSizeGuide={() => setIsSizeGuideOpen(true)}
+            sizeError={sizeShake}
           />
 
-          {/* Qty Selector & Size Guide Row */}
-          <div className="flex justify-between items-end">
-            <Qty qty={qty} setQty={setQty} max={currentStock} />
-            <button
-              type="button"
-              onClick={() => setIsSizeGuideOpen(true)}
-              className="text-sm text-gray-500 font-normal underline hover:text-black cursor-pointer border-none bg-transparent p-0 pb-2.5 transition-colors duration-200"
-            >
-              Size Guide
-            </button>
-          </div>
+          {/* Low stock warning — shown inline above Add to Bag */}
+          {currentStock > 0 && currentStock <= 3 && selectedSize && (
+            <p className="text-xs text-red-600 font-semibold tracking-wide -mt-1">
+              ⚠ Few pieces left
+            </p>
+          )}
 
-          {/* Product ID & Description Info */}
-          <div className="border-t pt-6 space-y-2.5">
+          {/* Add to Bag — immediately after size, H&M style */}
+          <AddtoBag
+            onClick={handleAddToBag}
+            disabled={isOutOfStock}
+            label={isOutOfStock ? 'Out of Stock' : 'Add to bag'}
+          />
+
+          {/* Product ID & Description — moved below Add to Bag */}
+          <div className="border-t pt-5 space-y-2">
             {code && (
-              <div className="text-sm text-gray-500 font-medium">
-                ID: <span className="text-gray-900 font-bold">{code}</span>
+              <div className="text-xs text-gray-400 font-medium uppercase tracking-wider">
+                Item No. <span className="text-gray-700 font-semibold">{code}</span>
               </div>
             )}
             {description && (
-              <div className="text-base text-gray-600 leading-relaxed">
+              <div className="text-sm text-gray-600 leading-relaxed">
                 {description}
               </div>
             )}
           </div>
 
-          
-          {/* Add to Bag Button */}
-          <AddtoBag 
-            onClick={handleAddToBag} 
-            disabled={isOutOfStock} 
-            label={isOutOfStock ? 'Out of Stock' : 'Add to bag'} 
-          />
-
-          {/* If user is logged out, show a clean Sign In button below the Add to Bag button */}
+          {/* If user is logged out, show a clean Sign In prompt */}
           {!user && (
-            <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-between">
+            <div className="p-4 bg-gray-50 border border-gray-100 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-800">Have an account?</p>
                 <p className="text-xs text-gray-500 mt-0.5 font-normal">Sign in for a better checkout experience.</p>
               </div>
               <button
                 onClick={openAuthModal}
-                className="px-5 py-2.5 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-xs tracking-wide rounded-lg cursor-pointer transition-opacity focus:outline-none"
+                className="px-5 py-2.5 bg-black text-white hover:opacity-90 font-semibold text-xs tracking-widest uppercase cursor-pointer transition-opacity focus:outline-none"
               >
                 Sign In
               </button>
