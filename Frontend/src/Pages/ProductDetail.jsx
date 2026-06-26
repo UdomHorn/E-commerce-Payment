@@ -118,23 +118,10 @@ const ProductDetail = () => {
     }
   }, [selectedColor, product]);
 
-  // Cap qty when color/size selection changes to not exceed the available stock
+  // Reset qty to 1 whenever size or color changes to prevent carrying over invalid qty
   useEffect(() => {
-    if (!product) return;
-    let stock = 0;
-    if (selectedColor && selectedSize) {
-      if (product.sizeStock && product.sizeStock[selectedColor]) {
-        stock = parseInt(product.sizeStock[selectedColor][selectedSize], 10) || 0;
-      } else if (product.sizeStock) {
-        stock = parseInt(product.sizeStock[selectedSize], 10) || 0;
-      }
-    }
-    if (stock > 0 && qty > stock) {
-      setQty(stock);
-    } else if (stock === 0 && qty !== 1) {
-      setQty(1);
-    }
-  }, [selectedColor, selectedSize, product]);
+    setQty(1);
+  }, [selectedSize, selectedColor]);
 
   // Auto-dismiss add to bag popup after 4 seconds
   useEffect(() => {
@@ -204,6 +191,18 @@ const ProductDetail = () => {
     } else if (product.sizeStock) {
       currentStock = parseInt(product.sizeStock[selectedSize], 10) || 0;
     }
+  }
+
+  // Build a map of size -> stock count for the selected color (used for low-stock badges)
+  const sizeStockMap = {};
+  if (product && sizes) {
+    sizes.forEach(s => {
+      if (product.sizeStock && selectedColor && product.sizeStock[selectedColor]) {
+        sizeStockMap[s] = parseInt(product.sizeStock[selectedColor][s], 10) || 0;
+      } else if (product.sizeStock) {
+        sizeStockMap[s] = parseInt(product.sizeStock[s], 10) || 0;
+      }
+    });
   }
 
   return (
@@ -349,7 +348,8 @@ const ProductDetail = () => {
             sizes={availableSizes} 
             selectedSize={selectedSize} 
             onSelectSize={setSelectedSize} 
-            modelInfo={modelInfo} 
+            modelInfo={modelInfo}
+            sizeStockMap={sizeStockMap}
           />
 
           {/* Qty Selector & Size Guide Row */}
