@@ -76,6 +76,13 @@ const ProductDetail = () => {
     fetchProduct();
   }, [id]);
 
+  // Set page title dynamically to the product name
+  useEffect(() => {
+    if (product && product.name) {
+      document.title = `${product.name} — Devclothes`;
+    }
+  }, [product]);
+
   // Automatic slideshow for product images
   useEffect(() => {
     if (!product || !product.images || product.images.length <= 1) return;

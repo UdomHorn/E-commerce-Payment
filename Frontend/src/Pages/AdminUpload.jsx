@@ -12,6 +12,10 @@ const AdminUpload = () => {
   const [loading, setLoading] = useState(false);
 
   // --- Dashboard States ---
+  useEffect(() => {
+    document.title = "Admin Dashboard — Devclothes";
+  }, []);
+
   const [dashboardStats, setDashboardStats] = useState(null);
   const [ordersList, setOrdersList] = useState([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);

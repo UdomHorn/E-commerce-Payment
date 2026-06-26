@@ -397,6 +397,8 @@ const Checkout = () => {
       return () => {
         document.title = originalTitle;
       };
+    } else {
+      document.title = "Secure Checkout — Devclothes";
     }
   }, [paymentSuccess, orderConfirmationId]);
 
