@@ -54,6 +54,23 @@ router.post('/create-payment-intent', async (req, res) => {
             error: `Insufficient stock for "${product.name}" (Size: ${item.selectedSize}). Available: ${availableSizeStock}`
           });
         }
+
+        // OPTION A — Reserve stock immediately to prevent oversell race condition
+        const sizeStockCopy = { ...product.sizeStock };
+        if (item.selectedColor && sizeStockCopy[item.selectedColor]) {
+          const colorSizeCopy = { ...sizeStockCopy[item.selectedColor] };
+          const current = parseInt(colorSizeCopy[item.selectedSize], 10);
+          if (!isNaN(current)) {
+            colorSizeCopy[item.selectedSize] = Math.max(0, current - item.quantity);
+            sizeStockCopy[item.selectedColor] = colorSizeCopy;
+          }
+        } else if (sizeStockCopy[item.selectedSize] !== undefined) {
+          const current = parseInt(sizeStockCopy[item.selectedSize], 10);
+          if (!isNaN(current)) {
+            sizeStockCopy[item.selectedSize] = Math.max(0, current - item.quantity);
+          }
+        }
+        product.sizeStock = sizeStockCopy;
       }
 
       // Validate color stock if it is set in database
@@ -65,7 +82,19 @@ router.post('/create-payment-intent', async (req, res) => {
             error: `Insufficient stock for "${product.name}" (Color: ${item.selectedColor}). Available: ${availableColorStock}`
           });
         }
+
+        // OPTION A — Reserve color stock immediately
+        const colorStockCopy = { ...product.colorStock };
+        const current = parseInt(colorStockCopy[item.selectedColor], 10);
+        if (!isNaN(current)) {
+          colorStockCopy[item.selectedColor] = Math.max(0, current - item.quantity);
+          product.colorStock = colorStockCopy;
+        }
       }
+
+      // Save reserved stock to database within the same transaction
+      await product.save({ transaction });
+      console.log(`🔒 Reserved ${item.quantity}x "${product.name}" (Size: ${item.selectedSize}, Color: ${item.selectedColor}) — stock locked at intent creation.`);
 
       totalAmount += itemPrice * item.quantity;
 

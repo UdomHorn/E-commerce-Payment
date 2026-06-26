@@ -56,7 +56,8 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
 
       if (order) {
         if (order.status !== 'PAID') {
-          // Perform inventory deduction and order status update inside transaction
+          // Stock was already reserved (deducted) at payment intent creation.
+          // Here we only update the order status and fire admin notification.
           await sequelize.transaction(async (t) => {
             order.status = 'PAID';
             await order.save({ transaction: t });
@@ -68,76 +69,8 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
               message: `Order #${order.id} paid by ${order.customerEmail} for $${order.totalAmount.toFixed(2)}`,
               metadata: { orderId: order.id }
             }, { transaction: t });
-
-            for (const item of order.items) {
-              const product = await Product.findByPk(item.productId, { transaction: t });
-              if (product) {
-                // Deduct Size Stock
-                if (product.sizeStock && item.selectedSize) {
-                  const sizeStock = { ...product.sizeStock };
-                  if (item.selectedColor && sizeStock[item.selectedColor]) {
-                    const colorSizeStock = { ...sizeStock[item.selectedColor] };
-                    const currentSizeStock = parseInt(colorSizeStock[item.selectedSize], 10);
-                    if (!isNaN(currentSizeStock)) {
-                      const newStock = Math.max(0, currentSizeStock - item.quantity);
-                      colorSizeStock[item.selectedSize] = newStock;
-                      sizeStock[item.selectedColor] = colorSizeStock;
-                      product.sizeStock = sizeStock;
-
-                      if (newStock <= 3) {
-                        await Notification.create({
-                          type: 'LOW_STOCK',
-                          title: 'Low Stock Warning',
-                          message: `Product "${product.name}" (Color: ${item.selectedColor}, Size: ${item.selectedSize}) is low on stock: only ${newStock} items left!`,
-                          metadata: { productId: product.id }
-                        }, { transaction: t });
-                      }
-                    }
-                  } else {
-                    const currentSizeStock = parseInt(sizeStock[item.selectedSize], 10);
-                    if (!isNaN(currentSizeStock)) {
-                      const newStock = Math.max(0, currentSizeStock - item.quantity);
-                      sizeStock[item.selectedSize] = newStock;
-                      product.sizeStock = sizeStock;
-
-                      if (newStock <= 3) {
-                        await Notification.create({
-                          type: 'LOW_STOCK',
-                          title: 'Low Stock Warning',
-                          message: `Product "${product.name}" (Size: ${item.selectedSize}) is low on stock: only ${newStock} items left!`,
-                          metadata: { productId: product.id }
-                        }, { transaction: t });
-                      }
-                    }
-                  }
-                }
-
-                // Deduct Color Stock
-                if (product.colorStock && item.selectedColor) {
-                  const colorStock = { ...product.colorStock };
-                  const currentColorStock = parseInt(colorStock[item.selectedColor], 10);
-                  if (!isNaN(currentColorStock)) {
-                    const newStock = Math.max(0, currentColorStock - item.quantity);
-                    colorStock[item.selectedColor] = newStock;
-                    product.colorStock = colorStock;
-
-                    if (newStock <= 3) {
-                      await Notification.create({
-                        type: 'LOW_STOCK',
-                        title: 'Low Stock Warning',
-                        message: `Product "${product.name}" (Color: ${item.selectedColor}) is low on stock: only ${newStock} items left!`,
-                        metadata: { productId: product.id }
-                      }, { transaction: t });
-                    }
-                  }
-                }
-
-                await product.save({ transaction: t });
-                console.log(`📉 Deducted ${item.quantity}x from "${product.name}" for size "${item.selectedSize}" & color "${item.selectedColor}".`);
-              }
-            }
           });
-          console.log(`✅ Order #${order.id} status updated to PAID and stock levels deducted successfully.`);
+          console.log(`✅ Order #${order.id} status updated to PAID. Stock was already reserved at intent creation.`);
           // Send Telegram notification
           sendTelegramNotification(order.id);
         }
@@ -154,7 +87,8 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
 
     try {
       const order = await Order.findOne({
-        where: { stripePaymentIntentId: paymentIntent.id }
+        where: { stripePaymentIntentId: paymentIntent.id },
+        include: [{ model: OrderItem, as: 'items' }]
       });
 
       if (order) {
@@ -162,6 +96,36 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
           await sequelize.transaction(async (t) => {
             order.status = 'FAILED';
             await order.save({ transaction: t });
+
+            // Restore reserved stock back to the product (reverse the reservation)
+            for (const item of order.items) {
+              const product = await Product.findByPk(item.productId, { transaction: t });
+              if (product) {
+                // Restore size stock
+                if (product.sizeStock && item.selectedSize) {
+                  const sizeStock = { ...product.sizeStock };
+                  if (item.selectedColor && sizeStock[item.selectedColor]) {
+                    const colorSizeStock = { ...sizeStock[item.selectedColor] };
+                    const current = parseInt(colorSizeStock[item.selectedSize], 10) || 0;
+                    colorSizeStock[item.selectedSize] = current + item.quantity;
+                    sizeStock[item.selectedColor] = colorSizeStock;
+                  } else if (sizeStock[item.selectedSize] !== undefined) {
+                    const current = parseInt(sizeStock[item.selectedSize], 10) || 0;
+                    sizeStock[item.selectedSize] = current + item.quantity;
+                  }
+                  product.sizeStock = sizeStock;
+                }
+                // Restore color stock
+                if (product.colorStock && item.selectedColor) {
+                  const colorStock = { ...product.colorStock };
+                  const current = parseInt(colorStock[item.selectedColor], 10) || 0;
+                  colorStock[item.selectedColor] = current + item.quantity;
+                  product.colorStock = colorStock;
+                }
+                await product.save({ transaction: t });
+                console.log(`♻️ Restored ${item.quantity}x "${product.name}" (Size: ${item.selectedSize}, Color: ${item.selectedColor}) — payment failed.`);
+              }
+            }
 
             // Create notification for admin
             await Notification.create({
@@ -171,7 +135,7 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
               metadata: { orderId: order.id }
             }, { transaction: t });
           });
-          console.log(`✅ Order #${order.id} status updated to FAILED due to failed PaymentIntent.`);
+          console.log(`✅ Order #${order.id} status updated to FAILED and reserved stock restored.`);
         }
       } else {
         console.warn(`⚠️ Order for failed payment intent ${paymentIntent.id} not found.`);
