@@ -7,6 +7,10 @@ const Women = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    document.title = "Women's Collection — Devclothes";
+  }, []);
+
+  useEffect(() => {
     const fetchProducts = async () => {
       try {
         const response = await fetch(`${API_BASE}/api/products`);

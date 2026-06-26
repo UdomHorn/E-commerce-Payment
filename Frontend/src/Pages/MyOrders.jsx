@@ -12,6 +12,10 @@ const MyOrders = () => {
   const [expandedOrderId, setExpandedOrderId] = useState(null);
 
   useEffect(() => {
+    document.title = "My Purchases — Devclothes";
+  }, []);
+
+  useEffect(() => {
     if (authLoading) return;
     if (!user) {
       // Redirect to login if user is not authenticated

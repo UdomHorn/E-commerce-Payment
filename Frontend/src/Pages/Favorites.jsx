@@ -1,10 +1,14 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useFavorites } from '../context/FavoritesContext'
 import HightLightCard from '../assets/Components/HightLightCard'
 
 const Favorites = () => {
   const { favorites } = useFavorites();
+
+  useEffect(() => {
+    document.title = "My Favorites — Devclothes";
+  }, []);
 
   return (
     <div className='pt-[64px] font-roboto w-[80%] max-md:w-full mx-auto pb-16 min-h-[70vh]'>

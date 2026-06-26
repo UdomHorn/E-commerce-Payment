@@ -11,6 +11,11 @@ const Home = () => {
   const [womenBanner, setWomenBanner] = useState(null);
   const [menBanner, setMenBanner] = useState(null);
 
+  // Set page title
+  useEffect(() => {
+    document.title = "Devclothes — Premium Streetwear & Apparel";
+  }, []);
+
   // Fetch Category Banners
   useEffect(() => {
     const fetchCategoryBanners = async () => {
