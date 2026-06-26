@@ -5,12 +5,7 @@ const Size = ({ sizes, selectedSize, onSelectSize, modelInfo }) => {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-between items-center">
-        <div className="text-lg font-bold text-gray-900">Size</div>
-        <button type="button" className="text-sm text-gray-500 font-normal hover:underline cursor-pointer border-none bg-transparent p-0">
-          Size Guide
-        </button>
-      </div>
+      <div className="text-lg font-bold text-gray-900">Size</div>
       
       <div className="flex flex-wrap gap-2.5">
         {sizes.map((size, idx) => {
@@ -31,9 +26,9 @@ const Size = ({ sizes, selectedSize, onSelectSize, modelInfo }) => {
           );
         })}
       </div>
-      
+
       {modelInfo && (
-        <div className="text-sm text-gray-500 flex items-center gap-2 mt-2">
+        <div className="text-sm text-gray-500 flex items-center gap-2 mt-1">
           <div className="w-4 h-4 bg-black flex-shrink-0"></div>
           <span>{modelInfo}</span>
         </div>

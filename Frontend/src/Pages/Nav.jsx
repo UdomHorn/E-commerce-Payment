@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faBars, faMagnifyingGlass, faHeart, faBagShopping, faXmark, faSpinner, faBell, faTriangleExclamation, faCircleExclamation } from '@fortawesome/free-solid-svg-icons'
+import { faMagnifyingGlass, faBagShopping, faXmark, faSpinner, faBell, faTriangleExclamation, faCircleExclamation } from '@fortawesome/free-solid-svg-icons'
 import { motion, AnimatePresence } from "framer-motion"
 import logo from '../assets/logo/Devclothes.jpg'
 import { Link, useNavigate } from 'react-router-dom'
 import API_BASE from '../config'
 import { useCart } from '../context/CartContext'
-import { useFavorites } from '../context/FavoritesContext'
 import { useAuth } from '../context/AuthContext'
 
 const Nav = () => {
   // const [showLogin, setShowLogin] = useState(false);
   // const [gender, setGender] = useState("");
   const { getCartCount } = useCart();
-  const { getFavoritesCount } = useFavorites();
   const { user, openAuthModal, logout } = useAuth();
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

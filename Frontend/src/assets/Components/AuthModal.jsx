@@ -191,23 +191,24 @@ const AuthModal = () => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center font-roboto">
+      <div className="fixed inset-0 z-50 flex justify-end font-roboto">
         {/* Backdrop Overlay */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
           onClick={closeAuthModal}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         />
 
-        {/* Modal Content */}
+        {/* Drawer Content */}
         <motion.div
-          initial={{ scale: 0.95, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.95, opacity: 0, y: 20 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 250 }}
-          className="relative w-full max-w-md bg-white p-8 rounded-2xl shadow-2xl overflow-hidden mx-4"
+          initial={{ x: '100%' }}
+          animate={{ x: 0 }}
+          exit={{ x: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+          className="relative w-full max-w-md bg-white p-8 shadow-2xl z-10 h-full overflow-y-auto rounded-none flex flex-col"
         >
           {/* Close button */}
           <button
@@ -273,26 +274,30 @@ const AuthModal = () => {
 
           {/* --- VIEW: Forgot Password Flow --- */}
           {isForgotPassword ? (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {forgotPasswordStep === 1 && (
-                <form onSubmit={handleForgotPasswordRequest} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                      Email Address
-                    </label>
+                <form onSubmit={handleForgotPasswordRequest} className="space-y-6">
+                  <div className="relative">
                     <input
                       type="email"
+                      id="forgot-email"
                       required
+                      placeholder=" "
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black focus:outline-none transition-all placeholder:text-gray-400"
+                      className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
                     />
+                    <label
+                      htmlFor="forgot-email"
+                      className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+                    >
+                      Email Address
+                    </label>
                   </div>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3.5 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-sm tracking-wide rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-opacity focus:outline-none disabled:opacity-50"
+                    className="w-full py-4 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-sm tracking-wide rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-opacity focus:outline-none disabled:opacity-50"
                   >
                     {loading ? <FontAwesomeIcon icon={faSpinner} className="animate-spin text-white" /> : 'Request Verification Code'}
                   </button>
@@ -300,25 +305,29 @@ const AuthModal = () => {
               )}
 
               {forgotPasswordStep === 2 && (
-                <form onSubmit={handleVerifyOtp} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                      Enter 6-Digit OTP Code
-                    </label>
+                <form onSubmit={handleVerifyOtp} className="space-y-6">
+                  <div className="relative">
                     <input
                       type="text"
+                      id="forgot-otp"
                       required
                       maxLength="6"
+                      placeholder=" "
                       value={otpCode}
                       onChange={(e) => setOtpCode(e.target.value)}
-                      placeholder="123456"
-                      className="w-full bg-gray-50 text-center tracking-widest text-lg font-bold text-gray-900 border border-gray-200 rounded-xl px-4 py-3 focus:bg-white focus:border-black focus:outline-none transition-all placeholder:text-gray-400"
+                      className="peer block w-full px-4 pt-6 pb-2 text-center tracking-widest text-lg font-bold text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
                     />
+                    <label
+                      htmlFor="forgot-otp"
+                      className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+                    >
+                      Enter 6-Digit OTP Code
+                    </label>
                   </div>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3.5 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-sm tracking-wide rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-opacity focus:outline-none disabled:opacity-50"
+                    className="w-full py-4 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-sm tracking-wide rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-opacity focus:outline-none disabled:opacity-50"
                   >
                     {loading ? <FontAwesomeIcon icon={faSpinner} className="animate-spin text-white" /> : 'Verify Code'}
                   </button>
@@ -342,37 +351,45 @@ const AuthModal = () => {
               )}
 
               {forgotPasswordStep === 3 && (
-                <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                      New Password
-                    </label>
+                <form onSubmit={handleResetPasswordSubmit} className="space-y-6">
+                  <div className="relative">
                     <input
                       type="password"
+                      id="reset-new-password"
                       required
+                      placeholder=" "
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black focus:outline-none transition-all placeholder:text-gray-400"
+                      className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                      Confirm New Password
+                    <label
+                      htmlFor="reset-new-password"
+                      className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+                    >
+                      New Password
                     </label>
+                  </div>
+                  <div className="relative">
                     <input
                       type="password"
+                      id="reset-confirm-new-password"
                       required
+                      placeholder=" "
                       value={confirmNewPassword}
                       onChange={(e) => setConfirmNewPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black focus:outline-none transition-all placeholder:text-gray-400"
+                      className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
                     />
+                    <label
+                      htmlFor="reset-confirm-new-password"
+                      className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+                    >
+                      Confirm New Password
+                    </label>
                   </div>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3.5 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-sm tracking-wide rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-opacity focus:outline-none disabled:opacity-50"
+                    className="w-full py-4 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-sm tracking-wide rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-opacity focus:outline-none disabled:opacity-50"
                   >
                     {loading ? <FontAwesomeIcon icon={faSpinner} className="animate-spin text-white" /> : 'Reset Password'}
                   </button>
@@ -396,71 +413,81 @@ const AuthModal = () => {
           ) : (
             /* --- VIEW: Standard login/signup form --- */
             <>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Email Address
-                  </label>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="relative">
                   <input
                     type="email"
+                    id="auth-email"
                     required
+                    placeholder=" "
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black focus:outline-none transition-all placeholder:text-gray-400"
+                    className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
                   />
+                  <label
+                    htmlFor="auth-email"
+                    className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+                  >
+                    Email Address
+                  </label>
                 </div>
 
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
-                      Password
-                    </label>
-                    {!isSignUp && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsForgotPassword(true);
-                          setForgotPasswordStep(1);
-                          setError('');
-                          setSuccessMessage('');
-                        }}
-                        className="text-xs text-gray-400 hover:text-black transition-colors focus:outline-none cursor-pointer"
-                      >
-                        Forgot password?
-                      </button>
-                    )}
-                  </div>
+                <div className="relative">
                   <input
                     type="password"
+                    id="auth-password"
                     required
+                    placeholder=" "
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black focus:outline-none transition-all placeholder:text-gray-400"
+                    className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
                   />
+                  <label
+                    htmlFor="auth-password"
+                    className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+                  >
+                    Password
+                  </label>
+                  {!isSignUp && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsForgotPassword(true);
+                        setForgotPasswordStep(1);
+                        setError('');
+                        setSuccessMessage('');
+                      }}
+                      className="absolute right-3 top-2.5 text-xs text-gray-400 hover:text-black transition-colors focus:outline-none cursor-pointer z-20"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
                 </div>
 
                 {isSignUp && (
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                      Confirm Password
-                    </label>
+                  <div className="relative">
                     <input
                       type="password"
+                      id="auth-confirm-password"
                       required
+                      placeholder=" "
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-gray-50 text-gray-900 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-black focus:outline-none transition-all placeholder:text-gray-400"
+                      className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
                     />
+                    <label
+                      htmlFor="auth-confirm-password"
+                      className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+                    >
+                      Confirm Password
+                    </label>
                   </div>
                 )}
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full mt-2 py-3.5 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-sm tracking-wide rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-opacity focus:outline-none disabled:opacity-50"
+                  className="w-full mt-2 py-4 bg-black text-white hover:opacity-90 active:opacity-95 font-bold text-sm tracking-wide rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-opacity focus:outline-none disabled:opacity-50"
                 >
                   {loading ? (
                     <FontAwesomeIcon icon={faSpinner} className="animate-spin text-white" />

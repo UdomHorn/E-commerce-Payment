@@ -10,15 +10,24 @@ import logo from '../assets/logo/Devclothes.jpg';
 const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_51PxPlaceholderKeyXXXXXXXXXXXXXX';
 const stripePromise = loadStripe(stripePublishableKey);
 
-const CheckoutForm = ({ totalAmount, onSuccess, onError }) => {
+const CheckoutForm = ({ totalAmount, onSuccess, onError, errorMessage }) => {
   const stripe = useStripe();
   const elements = useElements();
   const { cart } = useCart();
 
+  const [shippingMethod, setShippingMethod] = useState('shipping'); // 'shipping' or 'pickup'
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
+  const [streetAddress, setStreetAddress] = useState('');
+  const [apartment, setApartment] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [zipCode, setZipCode] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Cache session info to deduplicate order creation
+  const [paymentSession, setPaymentSession] = useState(null); // { clientSecret, orderId, sessionKey }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -31,31 +40,55 @@ const CheckoutForm = ({ totalAmount, onSuccess, onError }) => {
     onError('');
 
     try {
-      // 1. Call Backend to create Stripe Payment Intent
-      const response = await fetch(`${API_BASE}/api/payment/create-payment-intent`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          items: cart.map((item) => ({
-            productId: item.id,
-            quantity: item.quantity,
-            selectedSize: item.selectedSize,
-            selectedColor: item.selectedColor,
-          })),
-          shippingAddress: `${name}, ${address}`,
-          customerEmail: email,
-        }),
+      const fullAddress = shippingMethod === 'pickup'
+        ? `Store Pickup, Devclothes Shop (Phnom Penh), Phone: ${phone}`
+        : `${streetAddress}${apartment ? ', ' + apartment : ''}, ${city}, ${state}${zipCode ? ' ' + zipCode : ''}, Cambodia, Phone: ${phone}`;
+      
+      // Construct a unique session key from cart contents and customer info
+      const sessionKey = JSON.stringify({
+        cart: cart.map(i => ({ id: i.id, q: i.quantity, s: i.selectedSize, c: i.selectedColor })),
+        name,
+        email,
+        fullAddress
       });
 
-      const data = await response.json();
+      let clientSecret = '';
+      let orderId = '';
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to initialize payment.');
+      if (paymentSession && paymentSession.sessionKey === sessionKey) {
+        clientSecret = paymentSession.clientSecret;
+        orderId = paymentSession.orderId;
+      } else {
+        // 1. Call Backend to create Stripe Payment Intent
+        const response = await fetch(`${API_BASE}/api/payment/create-payment-intent`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            items: cart.map((item) => ({
+              productId: item.id,
+              quantity: item.quantity,
+              selectedSize: item.selectedSize,
+              selectedColor: item.selectedColor,
+            })),
+            shippingAddress: `${name}, ${fullAddress}`,
+            customerEmail: email,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to initialize payment.');
+        }
+
+        clientSecret = data.clientSecret;
+        orderId = data.orderId;
+
+        // Cache the session info
+        setPaymentSession({ clientSecret, orderId, sessionKey });
       }
-
-      const { clientSecret, orderId } = data;
 
       // 2. Confirm the card payment on Stripe servers
       const cardElement = elements.getElement(CardElement);
@@ -88,62 +121,239 @@ const CheckoutForm = ({ totalAmount, onSuccess, onError }) => {
     <form onSubmit={handleSubmit} className="space-y-6 text-black">
       <h3 className="text-xl font-bold border-b pb-3 text-gray-800">Billing & Shipping Details</h3>
 
-      <div>
-        <label className="block text-sm font-semibold text-gray-600 mb-1">Full Name</label>
-        <input
-          type="text"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="John Doe"
-          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-black"
-        />
+      {/* Segmented Delivery/Pickup Switcher */}
+      <div className="flex border border-gray-200 bg-gray-100/50 p-1 rounded-lg overflow-hidden select-none">
+        <button
+          type="button"
+          onClick={() => setShippingMethod('shipping')}
+          className={`flex-1 py-3 text-sm font-bold transition-all duration-200 text-center rounded-md cursor-pointer ${
+            shippingMethod === 'shipping'
+              ? 'bg-black text-white shadow-sm'
+              : 'text-gray-500 hover:text-black hover:bg-gray-200/50'
+          }`}
+        >
+          Delivery Shipping
+        </button>
+        <button
+          type="button"
+          onClick={() => setShippingMethod('pickup')}
+          className={`flex-1 py-3 text-sm font-bold transition-all duration-200 text-center rounded-md cursor-pointer ${
+            shippingMethod === 'pickup'
+              ? 'bg-black text-white shadow-sm'
+              : 'text-gray-500 hover:text-black hover:bg-gray-200/50'
+          }`}
+        >
+          Store Pickup (Free)
+        </button>
       </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-gray-600 mb-1">Email Address</label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="john@example.com"
-          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-black"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Full Name Input */}
+        <div className="relative">
+          <input
+            type="text"
+            id="fullname"
+            required
+            placeholder=" "
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
+          />
+          <label
+            htmlFor="fullname"
+            className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+          >
+            Full Name
+          </label>
+        </div>
+
+        {/* Email Address Input */}
+        <div className="relative">
+          <input
+            type="email"
+            id="email"
+            required
+            placeholder=" "
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
+          />
+          <label
+            htmlFor="email"
+            className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+          >
+            Email Address
+          </label>
+        </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-gray-600 mb-1">Shipping Address</label>
+      {/* Phone Number Input */}
+      <div className="relative">
         <input
-          type="text"
+          type="tel"
+          id="phone"
           required
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="123 Main St, City, Country"
-          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-black"
+          placeholder=" "
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
         />
+        <label
+          htmlFor="phone"
+          className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+        >
+          Phone Number
+        </label>
       </div>
+
+      {/* Conditional Shipping Address Inputs vs. Store Pickup Details */}
+      {shippingMethod === 'shipping' ? (
+        <div className="space-y-6">
+          {/* Street Address Input */}
+          <div className="relative">
+            <input
+              type="text"
+              id="street"
+              required
+              placeholder=" "
+              value={streetAddress}
+              onChange={(e) => setStreetAddress(e.target.value)}
+              className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
+            />
+            <label
+              htmlFor="street"
+              className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+            >
+              Street Address, Sangkat / Commune
+            </label>
+          </div>
+
+          {/* Apartment Input */}
+          <div className="relative">
+            <input
+              type="text"
+              id="apartment"
+              placeholder=" "
+              value={apartment}
+              onChange={(e) => setApartment(e.target.value)}
+              className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
+            />
+            <label
+              htmlFor="apartment"
+              className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+            >
+              Apt, Suite, Unit (optional)
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* District / Khan Input */}
+            <div className="relative">
+              <input
+                type="text"
+                id="district"
+                required
+                placeholder=" "
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
+              />
+              <label
+                htmlFor="district"
+                className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+              >
+                District / Khan
+              </label>
+            </div>
+
+            {/* Province / City Input */}
+            <div className="relative">
+              <input
+                type="text"
+                id="province"
+                required
+                placeholder=" "
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
+              />
+              <label
+                htmlFor="province"
+                className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+              >
+                Province / City
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* ZIP / Postal Code Input */}
+            <div className="relative">
+              <input
+                type="text"
+                id="zip"
+                placeholder=" "
+                value={zipCode}
+                onChange={(e) => setZipCode(e.target.value)}
+                className="peer block w-full px-4 pt-6 pb-2 text-gray-900 border border-gray-300 rounded-lg bg-white appearance-none focus:outline-none focus:ring-0 focus:border-black transition"
+              />
+              <label
+                htmlFor="zip"
+                className="absolute text-sm text-gray-500 duration-150 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white px-2 peer-focus:px-2 peer-focus:text-black peer-placeholder-shown:scale-100 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:top-1/2 peer-focus:top-2 peer-focus:scale-75 peer-focus:-translate-y-4 start-3 pointer-events-none"
+              >
+                ZIP / Postal Code (optional)
+              </label>
+            </div>
+
+            {/* Lock Label for Country */}
+            <div className="flex items-center px-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-500 select-none">
+              <div className="text-xs">
+                <span className="font-bold text-gray-400 block uppercase tracking-wide">Shipping Region</span>
+                <span className="text-sm font-semibold text-gray-700">Cambodia Only</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Store Pickup Info Panel */
+        <div className="p-5 border border-gray-200 bg-gray-50/50 rounded-lg text-gray-700 space-y-3">
+          <h4 className="font-extrabold text-sm text-gray-900 uppercase tracking-wide">Pickup Store Location</h4>
+          <div className="text-xs space-y-2 leading-relaxed text-gray-600">
+            <p className="font-bold text-gray-800 text-sm">Devclothes Shop Phnom Penh</p>
+            <p>Address: House 45, Street 242, Sangkat Boeung Prolit, Khan Prampi Makara, Phnom Penh, Cambodia.</p>
+            <p>Opening Hours: <span className="font-semibold text-gray-800">9:00 AM - 9:00 PM daily</span></p>
+            <p className="text-gray-400 pt-2.5 border-t mt-3">Please bring your Order ID (received upon successful payment) and a valid ID to verify your identity upon collection.</p>
+          </div>
+        </div>
+      )}
 
       <h3 className="text-xl font-bold border-b pt-4 pb-3 text-gray-800">Credit Card Information</h3>
 
-      <div className="p-4 border rounded-lg bg-gray-50">
+      <div className="p-4 border border-gray-300 rounded-lg bg-white shadow-sm focus-within:border-black focus-within:ring-1 focus-within:ring-black transition">
         <CardElement
           options={{
             style: {
               base: {
                 fontSize: '16px',
-                color: '#424770',
+                color: '#1f2937',
+                fontFamily: 'Outfit, Roboto, sans-serif',
                 '::placeholder': {
-                  color: '#aab7c4',
+                  color: '#9ca3af',
                 },
               },
               invalid: {
-                color: '#9e2146',
+                color: '#dc2626',
               },
             },
           }}
         />
       </div>
+
+      {errorMessage && (
+        <div className="p-4 mt-6 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm font-semibold">
+          {errorMessage}
+        </div>
+      )}
 
       <button
         type="submit"
@@ -179,6 +389,16 @@ const Checkout = () => {
   const [receiptError, setReceiptError] = useState('');
 
   const totalAmount = getCartTotal();
+
+  useEffect(() => {
+    if (paymentSuccess && orderConfirmationId) {
+      const originalTitle = document.title;
+      document.title = `Devclothes-Receipt-${orderConfirmationId}`;
+      return () => {
+        document.title = originalTitle;
+      };
+    }
+  }, [paymentSuccess, orderConfirmationId]);
 
   const handleSuccess = (orderId, email) => {
     setPaymentSuccess(true);
@@ -461,17 +681,12 @@ const Checkout = () => {
         <div className="bg-gray-50/50 border rounded-xl p-8 shadow-sm">
           <h2 className="text-2xl font-bold mb-6">Secure Checkout</h2>
 
-          {errorMessage && (
-            <div className="p-4 mb-6 rounded-lg bg-rose-100 border border-rose-300 text-rose-700 text-sm font-semibold">
-              {errorMessage}
-            </div>
-          )}
-
           <Elements stripe={stripePromise}>
             <CheckoutForm
               totalAmount={totalAmount}
               onSuccess={handleSuccess}
               onError={setErrorMessage}
+              errorMessage={errorMessage}
             />
           </Elements>
         </div>
