@@ -235,7 +235,7 @@ const ProductDetail = () => {
                 </div>
                 <h4 className="text-sm font-bold truncate">{name}</h4>
                 <p className="text-xs text-gray-600 mt-1">
-                  Size: <span className="font-medium text-black">{selectedSize}</span> | Color: <span className="font-medium text-black">{selectedColor}</span> | Qty: <span className="font-medium text-black">{qty}</span>
+                  Size: <span className="font-medium text-black">{selectedSize}</span> | Color: <span className="font-medium text-black">{selectedColor}</span> | Qty: <span className="font-medium text-black">1</span>
                 </p>
               </div>
 
