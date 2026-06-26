@@ -153,6 +153,13 @@ router.post('/forgot-password', async (req, res) => {
       return res.json({ message: 'If the email exists, a password reset OTP has been sent.' });
     }
 
+    // Block Google-only accounts from password reset flow
+    if (user.googleId && !user.password) {
+      return res.status(400).json({
+        error: 'This account uses Google Sign-In. Please log in with Google — no password is needed.',
+      });
+    }
+
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes expiry

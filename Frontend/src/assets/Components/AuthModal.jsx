@@ -24,6 +24,7 @@ const AuthModal = () => {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [resendCountdown, setResendCountdown] = useState(0);
+  const [isGoogleAccount, setIsGoogleAccount] = useState(false);
 
   useEffect(() => {
     let timer;
@@ -89,6 +90,7 @@ const AuthModal = () => {
     if (e) e.preventDefault();
     setError('');
     setSuccessMessage('');
+    setIsGoogleAccount(false);
     if (!email) {
       setError('Please enter your email address.');
       return;
@@ -102,7 +104,12 @@ const AuthModal = () => {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to send OTP code.');
+        // Detect Google-only account block and show special UI
+        if (data.error && data.error.includes('Google Sign-In')) {
+          setIsGoogleAccount(true);
+        } else {
+          setError(data.error || 'Failed to send OTP code.');
+        }
       } else {
         setForgotPasswordStep(2);
         setSuccessMessage(forgotPasswordStep === 2 ? 'A new verification code has been sent to your email.' : 'A 6-digit verification code has been sent to your email.');
@@ -396,11 +403,45 @@ const AuthModal = () => {
                 </form>
               )}
 
+              {/* Google Account Notice Card */}
+              {isGoogleAccount && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex flex-col items-center gap-3 text-center">
+                  <div className="flex items-center gap-2">
+                    <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                    </svg>
+                    <p className="text-sm font-bold text-gray-800">Google Account Detected</p>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    This account uses <strong>Google Sign-In</strong>.<br/>
+                    No password is needed — just sign in with Google.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsForgotPassword(false);
+                      setForgotPasswordStep(1);
+                      setIsGoogleAccount(false);
+                      setError('');
+                      setSuccessMessage('');
+                      setResendCountdown(0);
+                    }}
+                    className="w-full py-2.5 bg-black text-white text-xs font-bold rounded-lg hover:opacity-90 transition cursor-pointer focus:outline-none"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
                   setIsForgotPassword(false);
                   setForgotPasswordStep(1);
+                  setIsGoogleAccount(false);
                   setError('');
                   setSuccessMessage('');
                   setResendCountdown(0);
