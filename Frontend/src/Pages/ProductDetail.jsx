@@ -287,7 +287,7 @@ const ProductDetail = () => {
       <div className="sm:flex gap-12 mt-6">
         {/* Left Side: Images Carousel */}
         <div className="w-1/2 max-sm:w-full">
-          <div className="relative aspect-[3/4] w-full overflow-hidden bg-gray-100 rounded-lg shadow-sm">
+          <div className="relative aspect-square w-full overflow-hidden bg-gray-100 rounded-lg shadow-sm">
             {images && images.length > 0 ? (
               <div className="relative w-full h-full">
                 {images.map((imgUrl, i) => (
