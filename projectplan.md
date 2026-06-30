@@ -1,6 +1,6 @@
-# Ten11 E-commerce Payment Project Plan
+# Devclothes E-commerce Payment Project Plan
 
-This document tracks the roadmap and implementation status of the Ten11 E-commerce project, aligned with the planned phases.
+This document tracks the roadmap and implementation status of the Devclothes E-commerce project, aligned with the planned phases.
 
 ---
 

@@ -7,12 +7,12 @@ export const useCart = () => useContext(CartContext);
 
 export const CartProvider = ({ children }) => {
   const [cart, setCart] = useState(() => {
-    const savedCart = localStorage.getItem('ten11_cart');
+    const savedCart = localStorage.getItem('devclothes_cart');
     return savedCart ? JSON.parse(savedCart) : [];
   });
 
   useEffect(() => {
-    localStorage.setItem('ten11_cart', JSON.stringify(cart));
+    localStorage.setItem('devclothes_cart', JSON.stringify(cart));
   }, [cart]);
 
   const addToCart = (product, quantity, selectedSize, selectedColor) => {

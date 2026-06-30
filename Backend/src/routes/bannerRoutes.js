@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Banner, CategoryBanner } = require('../models');
-const { upload, cloudinary } = require('../config/cloudinary');
+const { uploadBanner, cloudinary } = require('../config/cloudinary');
 
 // @route   GET /api/banners
 // @desc    Get all active banners sorted by order
@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
 // @route   POST /api/banners
 // @desc    Create a new banner with an image upload to Cloudinary
 // @access  Public (Will restrict with Admin Auth in Phase 6)
-router.post('/', upload.single('image'), async (req, res) => {
+router.post('/', uploadBanner.single('image'), async (req, res) => {
   try {
     const { title, linkUrl, order, active } = req.body;
 
@@ -97,7 +97,7 @@ router.get('/categories', async (req, res) => {
 // @route   POST /api/banners/categories
 // @desc    Create or update category banner
 // @access  Public (Will restrict with Admin Auth in Phase 6)
-router.post('/categories', upload.single('image'), async (req, res) => {
+router.post('/categories', uploadBanner.single('image'), async (req, res) => {
   try {
     const { category } = req.body;
     if (!category) {

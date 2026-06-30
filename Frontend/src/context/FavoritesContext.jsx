@@ -6,12 +6,12 @@ export const useFavorites = () => useContext(FavoritesContext);
 
 export const FavoritesProvider = ({ children }) => {
   const [favorites, setFavorites] = useState(() => {
-    const savedFavorites = localStorage.getItem('ten11_favorites');
+    const savedFavorites = localStorage.getItem('devclothes_favorites');
     return savedFavorites ? JSON.parse(savedFavorites) : [];
   });
 
   useEffect(() => {
-    localStorage.setItem('ten11_favorites', JSON.stringify(favorites));
+    localStorage.setItem('devclothes_favorites', JSON.stringify(favorites));
   }, [favorites]);
 
   const toggleFavorite = (product) => {

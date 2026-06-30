@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import API_BASE from '../config';
 import { useAuth } from '../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
 
-import defaultWomen from '../assets/Images/8J6A0448.jpg';
-import defaultMen from '../assets/Images/8J6A0460.jpg';
+// Default fallbacks removed
 
 const AdminUpload = () => {
   const { user, token, loading: authLoading, logout } = useAuth();
@@ -18,6 +18,15 @@ const AdminUpload = () => {
   useEffect(() => {
     document.title = "Admin Dashboard — Devclothes";
   }, []);
+
+  // Auto-dismiss Toast Alert popup after 4 seconds
+  useEffect(() => {
+    if (!message.text) return;
+    const timer = setTimeout(() => {
+      setMessage({ type: '', text: '' });
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [message.text]);
 
   const [dashboardStats, setDashboardStats] = useState(null);
   const [ordersList, setOrdersList] = useState([]);
@@ -215,9 +224,7 @@ const AdminUpload = () => {
   const [pendingFiles, setPendingFiles] = useState({ Women: null, Men: null });
   const [pendingPreviews, setPendingPreviews] = useState({ Women: null, Men: null });
 
-  // --- Cropping State & Ref ---
-  const [croppingSession, setCroppingSession] = useState(null);
-  const viewportRef = useRef(null);
+  // No cropping session needed
 
 
 
@@ -687,6 +694,19 @@ const AdminUpload = () => {
       formData.append('detailImages', file);
     });
 
+    if (editingProduct) {
+      const existingImages = [];
+      if (cardPreview && !cardPreview.startsWith('blob:')) {
+        existingImages.push(cardPreview);
+      }
+      detailPreviews.forEach((url) => {
+        if (url && !url.startsWith('blob:')) {
+          existingImages.push(url);
+        }
+      });
+      formData.append('existingImages', JSON.stringify(existingImages));
+    }
+
     try {
       const url = editingProduct
         ? `${API_BASE}/api/products/${editingProduct.id}`
@@ -804,21 +824,21 @@ const AdminUpload = () => {
     const file = e.target.files[0];
     if (file) {
       const objectUrl = URL.createObjectURL(file);
-      setCroppingSession({
-        file,
-        category: `slide${slot}`,
-        previewUrl: objectUrl,
-        zoom: 1,
-        pan: { x: 0, y: 0 }
-      });
+      if (slot === 1) {
+        setSlide1Image(file);
+        setSlide1Preview(objectUrl);
+      } else if (slot === 2) {
+        setSlide2Image(file);
+        setSlide2Preview(objectUrl);
+      }
       e.target.value = '';
     }
   };
 
   const handleSlideshowSubmit = async (e) => {
     e.preventDefault();
-    if (!slide1Image || !slide2Image) {
-      setMessage({ type: 'error', text: 'Please select both Slide 1 and Slide 2 images to save.' });
+    if (!slide1Image && !slide2Image) {
+      setMessage({ type: 'error', text: 'Please select at least one slide image to save.' });
       return;
     }
 
@@ -876,83 +896,9 @@ const AdminUpload = () => {
     const file = e.target.files[0];
     if (file) {
       const objectUrl = URL.createObjectURL(file);
-      setCroppingSession({
-        file,
-        category: `collection_${category}`,
-        previewUrl: objectUrl,
-        zoom: 1,
-        pan: { x: 0, y: 0 }
-      });
+      setPendingFiles((prev) => ({ ...prev, [category]: file }));
+      setPendingPreviews((prev) => ({ ...prev, [category]: objectUrl }));
       e.target.value = '';
-    }
-  };
-
-  const handleApplyCrop = () => {
-    if (!croppingSession || !croppingSession.imgDims || !croppingSession.viewportDims) return;
-
-    const { category, file, zoom, pan, imgDims, viewportDims, fitDims } = croppingSession;
-    
-    let targetW = 1920;
-    let targetH = 600;
-    if (category.startsWith('collection_')) {
-      targetW = 1000;
-      targetH = 1250;
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = targetW;
-    canvas.height = targetH;
-    const ctx = canvas.getContext('2d');
-
-    const img = new Image();
-    img.onload = () => {
-      const scaleFactor = targetW / viewportDims.w;
-      
-      const drawW = fitDims.w * scaleFactor * zoom;
-      const drawH = fitDims.h * scaleFactor * zoom;
-
-      const centerX = targetW / 2 + pan.x * scaleFactor;
-      const centerY = targetH / 2 + pan.y * scaleFactor;
-
-      const drawX = centerX - drawW / 2;
-      const drawY = centerY - drawH / 2;
-
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, targetW, targetH);
-
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
-
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const croppedFile = new File([blob], file.name, { type: file.type || 'image/jpeg' });
-          const croppedUrl = URL.createObjectURL(croppedFile);
-
-          if (category === 'slide1') {
-            setSlide1Image(croppedFile);
-            setSlide1Preview(croppedUrl);
-          } else if (category === 'slide2') {
-            setSlide2Image(croppedFile);
-            setSlide2Preview(croppedUrl);
-          } else if (category === 'collection_Women') {
-            setPendingFiles(prev => ({ ...prev, Women: croppedFile }));
-            setPendingPreviews(prev => ({ ...prev, Women: croppedUrl }));
-          } else if (category === 'collection_Men') {
-            setPendingFiles(prev => ({ ...prev, Men: croppedFile }));
-            setPendingPreviews(prev => ({ ...prev, Men: croppedUrl }));
-          }
-        }
-
-        URL.revokeObjectURL(croppingSession.previewUrl);
-        setCroppingSession(null);
-      }, file.type || 'image/jpeg', 0.95);
-    };
-    img.src = croppingSession.previewUrl;
-  };
-
-  const handleCancelCrop = () => {
-    if (croppingSession) {
-      URL.revokeObjectURL(croppingSession.previewUrl);
-      setCroppingSession(null);
     }
   };
 
@@ -963,8 +909,8 @@ const AdminUpload = () => {
 
   const handleCollectionSubmit = async (e) => {
     e.preventDefault();
-    if (!pendingFiles.Women || !pendingFiles.Men) {
-      setMessage({ type: 'error', text: 'Please select both Women and Men Collection images to save.' });
+    if (!pendingFiles.Women && !pendingFiles.Men) {
+      setMessage({ type: 'error', text: 'Please select at least one collection image to save.' });
       return;
     }
 
@@ -1013,7 +959,7 @@ const AdminUpload = () => {
   };
 
   const deleteCategoryBanner = async (category) => {
-    if (!window.confirm(`Are you sure you want to restore the default local image for ${category} Collection?`)) return;
+    if (!window.confirm(`Are you sure you want to delete the banner for the ${category} Collection? If deleted, it will show no image.`)) return;
 
     setLoading(true);
     setMessage({ type: '', text: '' });
@@ -1024,15 +970,15 @@ const AdminUpload = () => {
       });
 
       if (response.ok) {
-        setMessage({ type: 'success', text: `Successfully reverted ${category} Collection to default image.` });
+        setMessage({ type: 'success', text: `Successfully deleted the ${category} Collection banner.` });
         fetchDbCategoryBanners(); // Reload list
       } else {
         const result = await response.json();
-        throw new Error(result.error || `Failed to reset ${category} banner.`);
+        throw new Error(result.error || `Failed to delete ${category} banner.`);
       }
     } catch (error) {
       console.error(error);
-      setMessage({ type: 'error', text: error.message || `Failed to reset ${category} banner.` });
+      setMessage({ type: 'error', text: error.message || `Failed to delete ${category} banner.` });
     } finally {
       setLoading(false);
     }
@@ -1070,6 +1016,45 @@ const AdminUpload = () => {
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-white text-black font-roboto pt-[72px]">
+      {/* Premium Toast Alert popup */}
+      <AnimatePresence>
+        {message.text && (
+          <motion.div
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            transition={{ type: 'tween', duration: 0.3 }}
+            className="fixed top-24 right-6 z-[100] w-80 bg-white border border-black p-4 rounded-none shadow-md flex gap-3 text-black font-roboto"
+          >
+            {/* Status Icon */}
+            <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full border border-black">
+              {message.type === 'success' ? (
+                <span className="text-black font-bold text-sm">✓</span>
+              ) : (
+                <span className="text-black font-bold text-sm">✕</span>
+              )}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 flex flex-col justify-center pr-4">
+              <div className="text-xs font-bold uppercase tracking-wider mb-0.5">
+                {message.type === 'success' ? 'Success' : 'Error'}
+              </div>
+              <div className="text-[11px] font-semibold text-neutral-600 leading-snug">
+                {message.text}
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={() => setMessage({ type: '', text: '' })}
+              className="absolute top-2 right-2 text-gray-400 hover:text-black transition focus:outline-none cursor-pointer"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Sticky Global Navigation Sidebar — White, matching storefront style */}
       <aside className="w-full md:w-56 bg-white flex flex-col justify-between flex-shrink-0 border-r border-gray-150 sticky top-[72px] md:h-[calc(100vh-72px)] z-30">
         {/* Brand Header */}
@@ -1148,17 +1133,6 @@ const AdminUpload = () => {
 
       {/* Main Content Workspace */}
       <main className="flex-1 w-full p-6 md:p-8 bg-white text-black overflow-y-auto font-roboto">
-        {/* Global Messages */}
-        {message.text && (
-          <div
-            className={`p-4 mb-6 rounded-xl text-sm font-semibold transition-all duration-300 ${message.type === 'success'
-              ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-              : 'bg-rose-50 border border-rose-200 text-rose-800'
-              }`}
-          >
-            {message.text}
-          </div>
-        )}
 
         {/* TAB 0: DASHBOARD OVERVIEW */}
         {activeTab === 'dashboard' && (
@@ -1916,7 +1890,7 @@ const AdminUpload = () => {
               <form onSubmit={handleSlideshowSubmit} className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-baseline gap-2 pt-2">
                   <h4 className="text-base font-bold text-gray-900">1. Hero Slideshow Banners</h4>
-                  <span className="text-xs text-gray-400 font-medium">Select and save both Slide 1 and Slide 2 images together.</span>
+                  <span className="text-xs text-gray-400 font-medium">Select and save Slide 1 and/or Slide 2 images.</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1925,7 +1899,7 @@ const AdminUpload = () => {
                     <div className="flex justify-between items-center border-b border-gray-100 pb-2">
                       <span className="text-sm font-extrabold text-black">Slide 1 Image</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-gray-400 font-mono">1920 × 600px</span>
+                        <span className="text-[10px] text-gray-400 font-mono">1920 × 820px</span>
                         <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                     </div>
@@ -1961,18 +1935,29 @@ const AdminUpload = () => {
                       )}
                     </div>
 
-                    {slide1Preview && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSlide1Image(null);
-                          setSlide1Preview('');
-                        }}
-                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                      >
-                        Cancel Selection
-                      </button>
-                    )}
+                    <div className="flex gap-2">
+                      {slide1Preview && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSlide1Image(null);
+                            setSlide1Preview('');
+                          }}
+                          className="flex-1 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                        >
+                          Cancel Selection
+                        </button>
+                      )}
+                      {!slide1Preview && dbBanners.find(b => b.order === 1) && (
+                        <button
+                          type="button"
+                          onClick={() => deleteBanner(dbBanners.find(b => b.order === 1).id)}
+                          className="flex-1 py-2 border border-gray-200 hover:border-red-500 hover:text-red-500 text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                        >
+                          Delete Banner
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Slide 2 Slot */}
@@ -1980,7 +1965,7 @@ const AdminUpload = () => {
                     <div className="flex justify-between items-center border-b border-gray-100 pb-2">
                       <span className="text-sm font-extrabold text-black">Slide 2 Image</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-gray-400 font-mono">1920 × 600px</span>
+                        <span className="text-[10px] text-gray-400 font-mono">1920 × 820px</span>
                         <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                     </div>
@@ -2005,41 +1990,52 @@ const AdminUpload = () => {
                         <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4">
                           <span className="text-2xl mb-1">📷</span>
                           <span className="text-xs font-bold text-black">Select Slide 2 Image</span>
-                          <span className="text-[9px] text-gray-450 mt-0.5">Click to choose file</span>
+                          <span className="text-[9px] text-gray-455 mt-0.5">Click to choose file</span>
                         </div>
                       )}
                     </label>
 
-                    <div className="text-xs space-y-1 text-gray-500 pt-1">
+                    <div className="text-xs space-y-1 text-gray-550 pt-1">
                       {!slide2Preview && !dbBanners.find(b => b.order === 2) && (
                         <p className="italic text-gray-400">No active Slide 2 banner override set.</p>
                       )}
                     </div>
 
-                    {slide2Preview && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSlide2Image(null);
-                          setSlide2Preview('');
-                        }}
-                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                      >
-                        Cancel Selection
-                      </button>
-                    )}
+                    <div className="flex gap-2">
+                      {slide2Preview && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSlide2Image(null);
+                            setSlide2Preview('');
+                          }}
+                          className="flex-1 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                        >
+                          Cancel Selection
+                        </button>
+                      )}
+                      {!slide2Preview && dbBanners.find(b => b.order === 2) && (
+                        <button
+                          type="button"
+                          onClick={() => deleteBanner(dbBanners.find(b => b.order === 2).id)}
+                          className="flex-1 py-2 border border-gray-200 hover:border-red-500 hover:text-red-500 text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                        >
+                          Delete Banner
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 <div className="pt-4">
                   <button
                     type="submit"
-                    disabled={loading || !slide1Image || !slide2Image}
+                    disabled={loading || (!slide1Image && !slide2Image)}
                     className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
-                      loading || !slide1Image || !slide2Image ? 'opacity-50 cursor-not-allowed' : ''
+                      loading || (!slide1Image && !slide2Image) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
-                    {loading ? 'Saving slideshow banners...' : 'Save Slideshow Banners (Both Required)'}
+                    {loading ? 'Saving slideshow banners...' : 'Save Slideshow Banners'}
                   </button>
                 </div>
               </form>
@@ -2049,21 +2045,14 @@ const AdminUpload = () => {
             <form onSubmit={handleCollectionSubmit} className="space-y-6">
               <div className="flex flex-col sm:flex-row justify-between sm:items-baseline gap-2">
                 <h4 className="text-base font-bold text-gray-900">2. Homepage Collection Banners</h4>
-                <span className="text-xs text-gray-400 font-medium">Select and save both Women and Men Collection images together.</span>
+                <span className="text-xs text-gray-400 font-medium">Select and save Women and/or Men Collection images.</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Women Collection Card */}
-                <div className="group relative border border-gray-200 bg-white p-5 flex flex-col justify-between hover:border-black transition-colors duration-300 rounded-xl">
-                  <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-4">
-                    <span className="text-sm font-extrabold text-black">Women Collection</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
-                      <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
-                    </div>
-                  </div>
-
-                  <label className="cursor-pointer block relative">
+                {/* Women Collection Slot */}
+                <div className="border border-gray-200 rounded-xl bg-white p-4 flex flex-col sm:flex-row gap-4 items-start">
+                  {/* Compact Image Selector */}
+                  <label className="cursor-pointer flex-shrink-0 w-full sm:w-48 aspect-[4/5] bg-gray-50 border border-dashed border-gray-200 hover:border-black rounded-lg overflow-hidden transition-colors flex items-center justify-center relative">
                     <input
                       type="file"
                       accept="image/*"
@@ -2071,80 +2060,64 @@ const AdminUpload = () => {
                       className="hidden"
                       disabled={loading}
                     />
-                    <div className="aspect-[4/5] bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center overflow-hidden relative">
-                      {pendingPreviews.Women ? (
-                        <img
-                          src={pendingPreviews.Women}
-                          alt="Women Collection Pending Banner"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : dbCategoryBanners.find(b => b.category === 'Women') ? (
-                        <img
-                          src={dbCategoryBanners.find(b => b.category === 'Women').imageUrl}
-                          alt="Women Collection Custom Banner"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full relative">
-                          <img
-                            src={defaultWomen}
-                            alt="Women Collection Default Banner"
-                            className="w-full h-full object-cover opacity-60"
-                          />
-                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10">
-                            <span className="bg-black/75 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                              Default Active
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white">
-                        <span className="text-2xl mb-2">📸</span>
-                        <span className="text-xs font-bold">
-                          Click to Change
-                        </span>
+                    {pendingPreviews.Women ? (
+                      <img src={pendingPreviews.Women} alt="Women Collection Preview" className="w-full h-full object-cover" />
+                    ) : dbCategoryBanners.find(b => b.category === 'Women') ? (
+                      <img
+                        src={dbCategoryBanners.find(b => b.category === 'Women').imageUrl}
+                        alt="Current Women Collection"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-gray-400 p-2 text-center">
+                        <span className="text-2xl mb-1">📷</span>
+                        <span className="text-[11px] font-bold text-black mt-0.5">Select Women Collection</span>
+                        <span className="text-[9px] text-gray-450 mt-0.5">Click to choose file</span>
                       </div>
-                    </div>
+                    )}
                   </label>
 
-                  <div className="bg-white pt-3 space-y-3">
-                    {/* Restore to Default Button */}
-                    {!pendingPreviews.Women && dbCategoryBanners.find(b => b.category === 'Women') && (
-                      <button
-                        type="button"
-                        onClick={() => deleteCategoryBanner('Women')}
-                        disabled={loading}
-                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-gray-505 hover:text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                      >
-                        Restore Default
-                      </button>
-                    )}
+                  {/* Metadata & Actions */}
+                  <div className="flex-1 flex flex-col justify-between w-full h-full min-h-[240px] text-center sm:text-left py-1">
+                    <div>
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 border-b border-gray-100 pb-2">
+                        <span className="text-sm font-extrabold text-black">Women Collection</span>
+                        <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
+                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-3">
+                        {pendingPreviews.Women ? 'New Image Selected (pending save)' : dbCategoryBanners.find(b => b.category === 'Women') ? 'Active Category Banner' : 'No active banner set'}
+                      </p>
+                    </div>
 
-                    {pendingPreviews.Women && (
-                      <button
-                        type="button"
-                        onClick={() => cancelPending('Women')}
-                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                      >
-                        Cancel Selection
-                      </button>
-                    )}
+                    <div className="flex justify-center sm:justify-start gap-2 mt-auto pt-4">
+                      {pendingPreviews.Women && (
+                        <button
+                          type="button"
+                          onClick={() => cancelPending('Women')}
+                          className="px-4 py-2 border border-gray-250 hover:border-black text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {!pendingPreviews.Women && dbCategoryBanners.find(b => b.category === 'Women') && (
+                        <button
+                          type="button"
+                          onClick={() => deleteCategoryBanner('Women')}
+                          disabled={loading}
+                          className="px-4 py-2 border border-gray-250 hover:border-red-500 hover:text-red-500 text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                        >
+                          Delete Banner
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Men Collection Card */}
-                <div className="group relative border border-gray-200 bg-white p-5 flex flex-col justify-between hover:border-black transition-colors duration-300 rounded-xl">
-                  <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-4">
-                    <span className="text-sm font-extrabold text-black">Men Collection</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
-                      <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
-                    </div>
-                  </div>
-
-                  <label className="cursor-pointer block relative">
+                {/* Men Collection Slot */}
+                <div className="border border-gray-200 rounded-xl bg-white p-4 flex flex-col sm:flex-row gap-4 items-start">
+                  {/* Compact Image Selector */}
+                  <label className="cursor-pointer flex-shrink-0 w-full sm:w-48 aspect-[4/5] bg-gray-50 border border-dashed border-gray-200 hover:border-black rounded-lg overflow-hidden transition-colors flex items-center justify-center relative">
                     <input
                       type="file"
                       accept="image/*"
@@ -2152,66 +2125,57 @@ const AdminUpload = () => {
                       className="hidden"
                       disabled={loading}
                     />
-                    <div className="aspect-[4/5] bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center overflow-hidden relative">
-                      {pendingPreviews.Men ? (
-                        <img
-                          src={pendingPreviews.Men}
-                          alt="Men Collection Pending Banner"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : dbCategoryBanners.find(b => b.category === 'Men') ? (
-                        <img
-                          src={dbCategoryBanners.find(b => b.category === 'Men').imageUrl}
-                          alt="Men Collection Custom Banner"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full relative">
-                          <img
-                            src={defaultMen}
-                            alt="Men Collection Default Banner"
-                            className="w-full h-full object-cover opacity-60"
-                          />
-                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10">
-                            <span className="bg-black/75 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                              Default Active
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white">
-                        <span className="text-2xl mb-2">📸</span>
-                        <span className="text-xs font-bold">
-                          Click to Change
-                        </span>
+                    {pendingPreviews.Men ? (
+                      <img src={pendingPreviews.Men} alt="Men Collection Preview" className="w-full h-full object-cover" />
+                    ) : dbCategoryBanners.find(b => b.category === 'Men') ? (
+                      <img
+                        src={dbCategoryBanners.find(b => b.category === 'Men').imageUrl}
+                        alt="Current Men Collection"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-gray-400 p-2 text-center">
+                        <span className="text-2xl mb-1">📷</span>
+                        <span className="text-[11px] font-bold text-black mt-0.5">Select Men Collection</span>
+                        <span className="text-[9px] text-gray-450 mt-0.5">Click to choose file</span>
                       </div>
-                    </div>
+                    )}
                   </label>
 
-                  <div className="bg-white pt-3 space-y-3">
-                    {/* Restore to Default Button */}
-                    {!pendingPreviews.Men && dbCategoryBanners.find(b => b.category === 'Men') && (
-                      <button
-                        type="button"
-                        onClick={() => deleteCategoryBanner('Men')}
-                        disabled={loading}
-                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-gray-550 hover:text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                      >
-                        Restore Default
-                      </button>
-                    )}
+                  {/* Metadata & Actions */}
+                  <div className="flex-1 flex flex-col justify-between w-full h-full min-h-[240px] text-center sm:text-left py-1">
+                    <div>
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 border-b border-gray-100 pb-2">
+                        <span className="text-sm font-extrabold text-black">Men Collection</span>
+                        <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
+                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-3">
+                        {pendingPreviews.Men ? 'New Image Selected (pending save)' : dbCategoryBanners.find(b => b.category === 'Men') ? 'Active Category Banner' : 'No active banner set'}
+                      </p>
+                    </div>
 
-                    {pendingPreviews.Men && (
-                      <button
-                        type="button"
-                        onClick={() => cancelPending('Men')}
-                        className="w-full mt-2 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                      >
-                        Cancel Selection
-                      </button>
-                    )}
+                    <div className="flex justify-center sm:justify-start gap-2 mt-auto pt-4">
+                      {pendingPreviews.Men && (
+                        <button
+                          type="button"
+                          onClick={() => cancelPending('Men')}
+                          className="px-4 py-2 border border-gray-250 hover:border-black text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {!pendingPreviews.Men && dbCategoryBanners.find(b => b.category === 'Men') && (
+                        <button
+                          type="button"
+                          onClick={() => deleteCategoryBanner('Men')}
+                          disabled={loading}
+                          className="px-4 py-2 border border-gray-250 hover:border-red-500 hover:text-red-500 text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                        >
+                          Delete Banner
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2219,12 +2183,12 @@ const AdminUpload = () => {
               <div className="pt-4">
                 <button
                   type="submit"
-                  disabled={loading || !pendingFiles.Women || !pendingFiles.Men}
+                  disabled={loading || (!pendingFiles.Women && !pendingFiles.Men)}
                   className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
-                    loading || !pendingFiles.Women || !pendingFiles.Men ? 'opacity-50 cursor-not-allowed' : ''
+                    loading || (!pendingFiles.Women && !pendingFiles.Men) ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
-                  {loading ? 'Saving collection banners...' : 'Save Collection Banners (Both Required)'}
+                  {loading ? 'Saving collection banners...' : 'Save Collection Banners'}
                 </button>
               </div>
             </form>
@@ -2350,191 +2314,6 @@ const AdminUpload = () => {
             <div className="mt-6 pt-4 border-t border-gray-150 flex justify-between items-center text-base">
               <span className="font-bold text-gray-800">Total Amount Paid:</span>
               <span className="font-extrabold text-black">${selectedOrderForModal.totalAmount.toFixed(2)}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Image Cropping Modal */}
-      {croppingSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center font-roboto">
-          {/* Backdrop */}
-          <div
-            onClick={handleCancelCrop}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-          />
-
-          {/* Modal Card */}
-          <div className="relative w-full max-w-2xl bg-white p-6 rounded-2xl shadow-2xl overflow-y-auto max-h-[90vh] mx-4 z-10 text-sm flex flex-col gap-5">
-            <button
-              type="button"
-              onClick={handleCancelCrop}
-              className="absolute top-4 right-4 text-gray-400 hover:text-black transition p-2 cursor-pointer focus:outline-none"
-              aria-label="Close cropper"
-            >
-              ✕
-            </button>
-
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">
-                Crop Your Banner
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">
-                {croppingSession.category.startsWith('slide')
-                  ? 'Slideshow Banner — Required aspect ratio ~3.2:1 (1920 × 600px)'
-                  : 'Collection Banner — Required aspect ratio 4:5 (1000 × 1250px)'}
-              </p>
-            </div>
-
-            {/* Viewport Frame */}
-            <div className="relative w-full flex justify-center bg-gray-50 border border-gray-150 rounded-xl p-4">
-              <div
-                ref={viewportRef}
-                className="relative w-full max-h-[350px] overflow-hidden bg-gray-200 border border-gray-300 rounded-lg select-none cursor-grab active:cursor-grabbing"
-                style={{
-                  aspectRatio: croppingSession.category.startsWith('slide') ? '3.2 / 1' : '4 / 5'
-                }}
-                onMouseDown={(e) => {
-                  if (!croppingSession.fitDims) return;
-                  setCroppingSession(prev => ({
-                    ...prev,
-                    isDragging: true,
-                    dragStart: { x: e.clientX - prev.pan.x, y: e.clientY - prev.pan.y }
-                  }));
-                }}
-                onMouseMove={(e) => {
-                  if (!croppingSession.isDragging) return;
-                  const newX = e.clientX - croppingSession.dragStart.x;
-                  const newY = e.clientY - croppingSession.dragStart.y;
-                  setCroppingSession(prev => ({
-                    ...prev,
-                    pan: { x: newX, y: newY }
-                  }));
-                }}
-                onMouseUp={() => {
-                  setCroppingSession(prev => ({ ...prev, isDragging: false }));
-                }}
-                onMouseLeave={() => {
-                  setCroppingSession(prev => ({ ...prev, isDragging: false }));
-                }}
-                onTouchStart={(e) => {
-                  if (!croppingSession.fitDims || e.touches.length === 0) return;
-                  const touch = e.touches[0];
-                  setCroppingSession(prev => ({
-                    ...prev,
-                    isDragging: true,
-                    dragStart: { x: touch.clientX - prev.pan.x, y: touch.clientY - prev.pan.y }
-                  }));
-                }}
-                onTouchMove={(e) => {
-                  if (!croppingSession.isDragging || e.touches.length === 0) return;
-                  const touch = e.touches[0];
-                  const newX = touch.clientX - croppingSession.dragStart.x;
-                  const newY = touch.clientY - croppingSession.dragStart.y;
-                  setCroppingSession(prev => ({
-                    ...prev,
-                    pan: { x: newX, y: newY }
-                  }));
-                }}
-                onTouchEnd={() => {
-                  setCroppingSession(prev => ({ ...prev, isDragging: false }));
-                }}
-              >
-                <img
-                  src={croppingSession.previewUrl}
-                  alt="Crop preview source"
-                  className="absolute origin-center select-none pointer-events-none max-w-none"
-                  style={{
-                    width: croppingSession.fitDims ? `${croppingSession.fitDims.w}px` : 'auto',
-                    height: croppingSession.fitDims ? `${croppingSession.fitDims.h}px` : 'auto',
-                    left: '50%',
-                    top: '50%',
-                    transform: `translate(-50%, -50%) translate(${croppingSession.pan.x}px, ${croppingSession.pan.y}px) scale(${croppingSession.zoom})`,
-                  }}
-                  onLoad={(e) => {
-                    const imgEl = e.target;
-                    const container = viewportRef.current;
-                    if (container) {
-                      const vW = container.offsetWidth;
-                      const vH = container.offsetHeight;
-                      const imgW = imgEl.naturalWidth;
-                      const imgH = imgEl.naturalHeight;
-                      const baseScale = Math.max(vW / imgW, vH / imgH);
-                      setCroppingSession(prev => ({
-                        ...prev,
-                        imgDims: { w: imgW, h: imgH },
-                        viewportDims: { w: vW, h: vH },
-                        fitDims: { w: imgW * baseScale, h: imgH * baseScale }
-                      }));
-                    }
-                  }}
-                />
-
-                {/* Center target guide box overlay */}
-                <div className="absolute inset-0 border-2 border-dashed border-white/50 pointer-events-none flex items-center justify-center">
-                  <div className="text-white/60 text-[10px] uppercase font-bold tracking-wider bg-black/30 px-2.5 py-1 rounded backdrop-blur-[2px]">
-                    Drag to position banner
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Slider zoom and offset info */}
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between text-xs font-semibold text-gray-500">
-                <span>Zoom Level: {Math.round(croppingSession.zoom * 100)}%</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCroppingSession(prev => ({
-                      ...prev,
-                      zoom: 1,
-                      pan: { x: 0, y: 0 }
-                    }));
-                  }}
-                  className="text-black hover:underline cursor-pointer"
-                >
-                  Reset Zoom & Position
-                </button>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-lg">🔍−</span>
-                <input
-                  type="range"
-                  min="1"
-                  max="3"
-                  step="0.01"
-                  value={croppingSession.zoom}
-                  onChange={(e) => {
-                    const nextZoom = parseFloat(e.target.value);
-                    setCroppingSession(prev => ({
-                      ...prev,
-                      zoom: nextZoom
-                    }));
-                  }}
-                  className="flex-1 accent-black h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                />
-                <span className="text-lg">🔍+</span>
-              </div>
-            </div>
-
-            {/* Modal Controls */}
-            <div className="flex gap-3 pt-3 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={handleApplyCrop}
-                disabled={!croppingSession.fitDims}
-                className="flex-1 py-3 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Apply Crop & Set Preview
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelCrop}
-                className="px-6 py-3 border border-gray-200 hover:border-black text-black font-semibold rounded-lg transition cursor-pointer"
-              >
-                Cancel
-              </button>
             </div>
           </div>
         </div>
