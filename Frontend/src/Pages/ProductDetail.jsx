@@ -289,11 +289,18 @@ const ProductDetail = () => {
         <div className="w-1/2 max-sm:w-full">
           <div className="relative aspect-[3/4] w-full overflow-hidden bg-gray-100 rounded-lg shadow-sm">
             {images && images.length > 0 ? (
-              <img
-                src={images[currentIndex]}
-                alt={`${name} - ${currentIndex + 1}`}
-                className="w-full h-full object-cover transition-all duration-1000 ease-in-out"
-              />
+              <div className="relative w-full h-full">
+                {images.map((imgUrl, i) => (
+                  <img
+                    key={i}
+                    src={imgUrl}
+                    alt={`${name} - ${i + 1}`}
+                    className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-in-out ${
+                      i === currentIndex ? 'opacity-100 z-10' : 'opacity-0 pointer-events-none'
+                    }`}
+                  />
+                ))}
+              </div>
             ) : (
               <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-200">
                 No Image Available
@@ -302,13 +309,13 @@ const ProductDetail = () => {
             
             {/* Carousel dots indicators */}
             {images && images.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2 z-20">
                 {images.map((_, i) => (
                   <button
                     key={i}
                     onClick={() => setCurrentIndex(i)}
-                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                      i === currentIndex ? 'bg-black w-5' : 'bg-black/30'
+                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 cursor-pointer ${
+                      i === currentIndex ? 'bg-black w-5' : 'bg-black/30 hover:bg-black/50'
                     }`}
                   />
                 ))}
