@@ -6,10 +6,38 @@ import API_BASE from '../config'
 
 const Home = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(true);
   const [products, setProducts] = useState([]);
   const [banners, setBanners] = useState(null); // start as null to prevent flash
   const [womenBanner, setWomenBanner] = useState(null);
   const [menBanner, setMenBanner] = useState(null);
+
+  // Re-enable transition after snap-back
+  useEffect(() => {
+    if (!isTransitioning) {
+      const raf = requestAnimationFrame(() => {
+        setIsTransitioning(true);
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [isTransitioning]);
+
+  const handleDotClick = (targetIndex) => {
+    if (!banners || targetIndex === currentIndex) return;
+
+    if (targetIndex === 0 && currentIndex === banners.length - 1) {
+      // Slide forward to cloned slide
+      setIsTransitioning(true);
+      setCurrentIndex(banners.length);
+      setTimeout(() => {
+        setIsTransitioning(false);
+        setCurrentIndex(0);
+      }, 1000);
+    } else {
+      setIsTransitioning(true);
+      setCurrentIndex(targetIndex);
+    }
+  };
 
   // Set page title
   useEffect(() => {
@@ -48,7 +76,10 @@ const Home = () => {
         if (response.ok) {
           const data = await response.json();
           if (data && data.length > 0) {
-            setBanners(data);
+            const filtered = data
+              .filter(b => b.order === 1 || b.order === 2)
+              .sort((a, b) => a.order - b.order);
+            setBanners(filtered);
           } else {
             setBanners([]);
           }
@@ -67,13 +98,23 @@ const Home = () => {
   useEffect(() => {
     if (!banners || banners.length <= 1) return;
     const interval = setInterval(() => {
-      setCurrentIndex((prevIndex) => 
-        prevIndex === banners.length - 1 ? 0 : prevIndex + 1
-      );
-    }, 3000); // Change every 3 seconds
+      const nextIndex = currentIndex + 1;
+      if (nextIndex === banners.length) {
+        // Slide forward to cloned slide
+        setIsTransitioning(true);
+        setCurrentIndex(banners.length);
+        setTimeout(() => {
+          setIsTransitioning(false);
+          setCurrentIndex(0);
+        }, 1000);
+      } else {
+        setIsTransitioning(true);
+        setCurrentIndex(nextIndex);
+      }
+    }, 3500); // Change every 3.5 seconds
 
     return () => clearInterval(interval);
-  }, [banners]);
+  }, [banners, currentIndex]);
 
   // Fetch Products
   useEffect(() => {
@@ -94,17 +135,48 @@ const Home = () => {
   return (
     <div className='pt-[48px] font-roboto'>
       {/* Banner Carousel */}
-      <div className="w-full overflow-hidden bg-gray-100 h-[calc(100vh-48px)]">
+      <div className="w-full overflow-hidden bg-gray-100 h-[calc(100vh-48px)] relative">
         {banners === null ? (
           // Shimmer/Skeleton loader while fetching
           <div className="w-full h-full bg-neutral-100 animate-pulse flex items-center justify-center">
             <span className="text-gray-400 text-xs font-semibold tracking-wider uppercase">Loading Banners...</span>
           </div>
         ) : banners.length > 0 ? (
-          <img src={banners[currentIndex]?.imageUrl}
-            alt={banners[currentIndex]?.title || 'banner'}
-            className="w-full h-full object-cover transition-all duration-[3000ms]"
-          />
+          <>
+            <div 
+              className={`flex w-full h-full ${isTransitioning ? 'transition-transform duration-1000 ease-in-out' : ''}`}
+              style={{ transform: `translateX(-${currentIndex * 100}%)` }}
+            >
+              {/* Render original banners + a cloned first banner at the end to slide forward seamlessly */}
+              {[...banners, banners[0]].map((banner, i) => (
+                <div key={banner.id ? `${banner.id}-${i}` : i} className="w-full h-full flex-shrink-0">
+                  <img
+                    src={banner.imageUrl}
+                    alt={banner.title || 'banner'}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ))}
+            </div>
+            
+            {/* Carousel dots indicators */}
+            {banners.length > 1 && (
+              <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-2 z-20">
+                {banners.map((_, i) => {
+                  const isActive = (currentIndex % banners.length) === i;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => handleDotClick(i)}
+                      className={`w-2.5 h-2.5 rounded-full transition-all duration-300 cursor-pointer ${
+                        isActive ? 'bg-black w-6' : 'bg-black/30 hover:bg-black/50'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </>
         ) : null}
       </div>
 
@@ -112,7 +184,7 @@ const Home = () => {
       <div className='w-[75%] max-md:w-[94%] h-full flex justify-center items-center m-auto mt-4 gap-7'>
         <div className="flex-1">
           {womenBanner === null ? (
-            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-xl flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
+            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-none flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
           ) : (
             <Link to="/Women" className="hover:opacity-95 transition block">
               <Collection src={womenBanner} title="Women Collection" />
@@ -121,7 +193,7 @@ const Home = () => {
         </div>
         <div className="flex-1">
           {menBanner === null ? (
-            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-xl flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
+            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-none flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
           ) : (
             <Link to="/Men" className="hover:opacity-95 transition block">
               <Collection src={menBanner} title="Men Collection" />

@@ -835,10 +835,10 @@ const AdminUpload = () => {
     }
   };
 
-  const handleSlideshowSubmit = async (e) => {
-    e.preventDefault();
-    if (!slide1Image && !slide2Image) {
-      setMessage({ type: 'error', text: 'Please select at least one slide image to save.' });
+  const saveSlide = async (slot) => {
+    const file = slot === 1 ? slide1Image : slide2Image;
+    if (!file) {
+      setMessage({ type: 'error', text: `Please select an image for Slide ${slot} first.` });
       return;
     }
 
@@ -846,41 +846,30 @@ const AdminUpload = () => {
     setMessage({ type: '', text: '' });
 
     try {
-      if (slide1Image) {
-        const existingSlide1 = dbBanners.find(b => b.order === 1);
-        if (existingSlide1) {
-          // Delete old slide 1
-          await fetch(`${API_BASE}/api/banners/${existingSlide1.id}`, { method: 'DELETE' });
-        }
-        const formData1 = new FormData();
-        formData1.append('title', 'Slide 1');
-        formData1.append('order', '1');
-        formData1.append('image', slide1Image);
-        const res1 = await fetch(`${API_BASE}/api/banners`, { method: 'POST', body: formData1 });
-        if (!res1.ok) throw new Error('Failed to upload Slide 1.');
+      const existingSlide = dbBanners.find(b => b.order === slot);
+      if (existingSlide) {
+        // Delete old slide
+        await fetch(`${API_BASE}/api/banners/${existingSlide.id}`, { method: 'DELETE' });
       }
+      
+      const formData = new FormData();
+      formData.append('title', `Slide ${slot}`);
+      formData.append('order', slot.toString());
+      formData.append('image', file);
+      
+      const res = await fetch(`${API_BASE}/api/banners`, { method: 'POST', body: formData });
+      if (!res.ok) throw new Error(`Failed to upload Slide ${slot}.`);
 
-      if (slide2Image) {
-        const existingSlide2 = dbBanners.find(b => b.order === 2);
-        if (existingSlide2) {
-          // Delete old slide 2
-          await fetch(`${API_BASE}/api/banners/${existingSlide2.id}`, { method: 'DELETE' });
-        }
-        const formData2 = new FormData();
-        formData2.append('title', 'Slide 2');
-        formData2.append('order', '2');
-        formData2.append('image', slide2Image);
-        const res2 = await fetch(`${API_BASE}/api/banners`, { method: 'POST', body: formData2 });
-        if (!res2.ok) throw new Error('Failed to upload Slide 2.');
+      setMessage({ type: 'success', text: `Slide ${slot} banner updated successfully!` });
+
+      // Reset local slide selection
+      if (slot === 1) {
+        setSlide1Image(null);
+        setSlide1Preview('');
+      } else {
+        setSlide2Image(null);
+        setSlide2Preview('');
       }
-
-      setMessage({ type: 'success', text: 'Slideshow banners updated successfully!' });
-
-      // Reset local slide selections
-      setSlide1Image(null);
-      setSlide1Preview('');
-      setSlide2Image(null);
-      setSlide2Preview('');
 
       fetchDbBanners();
     } catch (error) {
@@ -907,10 +896,10 @@ const AdminUpload = () => {
     setPendingPreviews((prev) => ({ ...prev, [category]: null }));
   };
 
-  const handleCollectionSubmit = async (e) => {
-    e.preventDefault();
-    if (!pendingFiles.Women && !pendingFiles.Men) {
-      setMessage({ type: 'error', text: 'Please select at least one collection image to save.' });
+  const saveCollection = async (category) => {
+    const file = pendingFiles[category];
+    if (!file) {
+      setMessage({ type: 'error', text: `Please select an image for ${category} Collection first.` });
       return;
     }
 
@@ -918,36 +907,24 @@ const AdminUpload = () => {
     setMessage({ type: '', text: '' });
 
     try {
-      if (pendingFiles.Women) {
-        const formData = new FormData();
-        formData.append('category', 'Women');
-        formData.append('image', pendingFiles.Women);
-        const response = await fetch(`${API_BASE}/api/banners/categories`, {
-          method: 'POST',
-          body: formData,
-        });
-        if (!response.ok) throw new Error('Failed to update Women Collection banner.');
-      }
-
-      if (pendingFiles.Men) {
-        const formData = new FormData();
-        formData.append('category', 'Men');
-        formData.append('image', pendingFiles.Men);
-        const response = await fetch(`${API_BASE}/api/banners/categories`, {
-          method: 'POST',
-          body: formData,
-        });
-        if (!response.ok) throw new Error('Failed to update Men Collection banner.');
-      }
+      const formData = new FormData();
+      formData.append('category', category);
+      formData.append('image', file);
+      
+      const response = await fetch(`${API_BASE}/api/banners/categories`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) throw new Error(`Failed to update ${category} Collection banner.`);
 
       setMessage({
         type: 'success',
-        text: 'Category collection banners updated successfully!'
+        text: `${category} Collection banner updated successfully!`
       });
 
       // Clear pending
-      setPendingFiles({ Women: null, Men: null });
-      setPendingPreviews({ Women: null, Men: null });
+      setPendingFiles(prev => ({ ...prev, [category]: null }));
+      setPendingPreviews(prev => ({ ...prev, [category]: null }));
 
       fetchDbCategoryBanners();
     } catch (error) {
@@ -1887,7 +1864,7 @@ const AdminUpload = () => {
                 </div>
               </div>
 
-              <form onSubmit={handleSlideshowSubmit} className="space-y-6">
+              <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-baseline gap-2 pt-2">
                   <h4 className="text-base font-bold text-gray-900">1. Hero Slideshow Banners</h4>
                   <span className="text-xs text-gray-400 font-medium">Select and save Slide 1 and/or Slide 2 images.</span>
@@ -1900,7 +1877,6 @@ const AdminUpload = () => {
                       <span className="text-sm font-extrabold text-black">Slide 1 Image</span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-400 font-mono">1920 × 820px</span>
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                     </div>
 
@@ -1924,7 +1900,7 @@ const AdminUpload = () => {
                         <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4">
                           <span className="text-2xl mb-1">📷</span>
                           <span className="text-xs font-bold text-black">Select Slide 1 Image</span>
-                          <span className="text-[9px] text-gray-450 mt-0.5">Click to choose file</span>
+                          <span className="text-[9px] text-gray-455 mt-0.5">Click to choose file</span>
                         </div>
                       )}
                     </label>
@@ -1936,27 +1912,36 @@ const AdminUpload = () => {
                     </div>
 
                     <div className="flex gap-2">
-                      {slide1Preview && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSlide1Image(null);
-                            setSlide1Preview('');
-                          }}
-                          className="flex-1 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                        >
-                          Cancel Selection
-                        </button>
-                      )}
-                      {!slide1Preview && dbBanners.find(b => b.order === 1) && (
+                      {slide1Preview ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSlide1Image(null);
+                              setSlide1Preview('');
+                            }}
+                            className="flex-1 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveSlide(1)}
+                            disabled={loading}
+                            className="flex-1 py-2 bg-black hover:bg-neutral-800 text-white font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1 shadow-sm"
+                          >
+                            {loading ? 'Saving...' : 'Save Banner'}
+                          </button>
+                        </>
+                      ) : dbBanners.find(b => b.order === 1) ? (
                         <button
                           type="button"
                           onClick={() => deleteBanner(dbBanners.find(b => b.order === 1).id)}
-                          className="flex-1 py-2 border border-gray-200 hover:border-red-500 hover:text-red-500 text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                          className="w-full py-2 border border-gray-250 hover:border-red-500 hover:text-red-500 text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
                         >
                           Delete Banner
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
@@ -1966,7 +1951,6 @@ const AdminUpload = () => {
                       <span className="text-sm font-extrabold text-black">Slide 2 Image</span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-400 font-mono">1920 × 820px</span>
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                     </div>
 
@@ -2002,47 +1986,42 @@ const AdminUpload = () => {
                     </div>
 
                     <div className="flex gap-2">
-                      {slide2Preview && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSlide2Image(null);
-                            setSlide2Preview('');
-                          }}
-                          className="flex-1 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                        >
-                          Cancel Selection
-                        </button>
-                      )}
-                      {!slide2Preview && dbBanners.find(b => b.order === 2) && (
+                      {slide2Preview ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSlide2Image(null);
+                              setSlide2Preview('');
+                            }}
+                            className="flex-1 py-2 border border-gray-200 hover:border-black text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveSlide(2)}
+                            disabled={loading}
+                            className="flex-1 py-2 bg-black hover:bg-neutral-800 text-white font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1 shadow-sm"
+                          >
+                            {loading ? 'Saving...' : 'Save Banner'}
+                          </button>
+                        </>
+                      ) : dbBanners.find(b => b.order === 2) ? (
                         <button
                           type="button"
                           onClick={() => deleteBanner(dbBanners.find(b => b.order === 2).id)}
-                          className="flex-1 py-2 border border-gray-200 hover:border-red-500 hover:text-red-500 text-black font-semibold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                          className="w-full py-2 border border-gray-250 hover:border-red-500 hover:text-red-500 text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
                         >
                           Delete Banner
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
-
-                <div className="pt-4">
-                  <button
-                    type="submit"
-                    disabled={loading || (!slide1Image && !slide2Image)}
-                    className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
-                      loading || (!slide1Image && !slide2Image) ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    {loading ? 'Saving slideshow banners...' : 'Save Slideshow Banners'}
-                  </button>
-                </div>
-              </form>
+              </div>
             {/* Section Divider */}
-            <hr className="my-12 border-gray-200" />
-
-            <form onSubmit={handleCollectionSubmit} className="space-y-6">
+                       <div className="space-y-6">
               <div className="flex flex-col sm:flex-row justify-between sm:items-baseline gap-2">
                 <h4 className="text-base font-bold text-gray-900">2. Homepage Collection Banners</h4>
                 <span className="text-xs text-gray-400 font-medium">Select and save Women and/or Men Collection images.</span>
@@ -2083,33 +2062,41 @@ const AdminUpload = () => {
                       <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 border-b border-gray-100 pb-2">
                         <span className="text-sm font-extrabold text-black">Women Collection</span>
                         <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                       <p className="text-xs text-gray-400 mt-3">
                         {pendingPreviews.Women ? 'New Image Selected (pending save)' : dbCategoryBanners.find(b => b.category === 'Women') ? 'Active Category Banner' : 'No active banner set'}
                       </p>
                     </div>
 
-                    <div className="flex justify-center sm:justify-start gap-2 mt-auto pt-4">
-                      {pendingPreviews.Women && (
-                        <button
-                          type="button"
-                          onClick={() => cancelPending('Women')}
-                          className="px-4 py-2 border border-gray-250 hover:border-black text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      {!pendingPreviews.Women && dbCategoryBanners.find(b => b.category === 'Women') && (
+                    <div className="flex justify-center sm:justify-start gap-2 mt-auto pt-4 w-full">
+                      {pendingPreviews.Women ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => cancelPending('Women')}
+                            className="px-4 py-2 border border-gray-250 hover:border-black text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveCollection('Women')}
+                            disabled={loading}
+                            className="px-4 py-2 bg-black hover:bg-neutral-800 text-white font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1 shadow-sm"
+                          >
+                            {loading ? 'Saving...' : 'Save Banner'}
+                          </button>
+                        </>
+                      ) : dbCategoryBanners.find(b => b.category === 'Women') ? (
                         <button
                           type="button"
                           onClick={() => deleteCategoryBanner('Women')}
                           disabled={loading}
-                          className="px-4 py-2 border border-gray-250 hover:border-red-500 hover:text-red-500 text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                          className="px-4 py-2 border border-gray-250 hover:border-red-500 hover:text-red-500 text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white w-full sm:w-auto"
                         >
                           Delete Banner
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -2148,52 +2135,48 @@ const AdminUpload = () => {
                       <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 border-b border-gray-100 pb-2">
                         <span className="text-sm font-extrabold text-black">Men Collection</span>
                         <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                       <p className="text-xs text-gray-400 mt-3">
                         {pendingPreviews.Men ? 'New Image Selected (pending save)' : dbCategoryBanners.find(b => b.category === 'Men') ? 'Active Category Banner' : 'No active banner set'}
                       </p>
                     </div>
 
-                    <div className="flex justify-center sm:justify-start gap-2 mt-auto pt-4">
-                      {pendingPreviews.Men && (
-                        <button
-                          type="button"
-                          onClick={() => cancelPending('Men')}
-                          className="px-4 py-2 border border-gray-250 hover:border-black text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      {!pendingPreviews.Men && dbCategoryBanners.find(b => b.category === 'Men') && (
+                    <div className="flex justify-center sm:justify-start gap-2 mt-auto pt-4 w-full">
+                      {pendingPreviews.Men ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => cancelPending('Men')}
+                            className="px-4 py-2 border border-gray-250 hover:border-black text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveCollection('Men')}
+                            disabled={loading}
+                            className="px-4 py-2 bg-black hover:bg-neutral-800 text-white font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1 shadow-sm"
+                          >
+                            {loading ? 'Saving...' : 'Save Banner'}
+                          </button>
+                        </>
+                      ) : dbCategoryBanners.find(b => b.category === 'Men') ? (
                         <button
                           type="button"
                           onClick={() => deleteCategoryBanner('Men')}
                           disabled={loading}
-                          className="px-4 py-2 border border-gray-250 hover:border-red-500 hover:text-red-500 text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white"
+                          className="px-4 py-2 border border-gray-250 hover:border-red-500 hover:text-red-500 text-black font-bold text-xs rounded transition uppercase tracking-wider cursor-pointer bg-white w-full sm:w-auto"
                         >
                           Delete Banner
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>
               </div>
-
-              <div className="pt-4">
-                <button
-                  type="submit"
-                  disabled={loading || (!pendingFiles.Women && !pendingFiles.Men)}
-                  className={`w-full py-4 bg-black hover:bg-neutral-800 text-white font-bold rounded-lg transition active:scale-[0.99] transition-transform shadow-sm flex items-center justify-center gap-2 cursor-pointer ${
-                    loading || (!pendingFiles.Women && !pendingFiles.Men) ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  {loading ? 'Saving collection banners...' : 'Save Collection Banners'}
-                </button>
-              </div>
-            </form>
             </div>
-          )}
+          </div>
+        )}
           </div>
         )}
       </main>
