@@ -10,20 +10,32 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Configure Cloudinary storage engine for Multer
+// Configure Cloudinary storage engine for Multer (Products)
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'ten11_ecommerce_products', // The folder inside Cloudinary
+    folder: 'devclothes_ecommerce_products', // The folder inside Cloudinary
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
     // Optional image optimizations on upload
     transformation: [{ width: 1000, height: 1500, crop: 'limit' }]
   },
 });
 
+// Dedicated storage engine for Banners to preserve original high quality
+const bannerStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'devclothes_ecommerce_banners', // Separate folder inside Cloudinary
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    // No transformation properties to retain original resolution
+  },
+});
+
 const upload = multer({ storage: storage });
+const uploadBanner = multer({ storage: bannerStorage });
 
 module.exports = {
   cloudinary,
-  upload
+  upload,
+  uploadBanner
 };

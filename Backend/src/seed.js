@@ -100,7 +100,7 @@ async function seedData() {
         if (fs.existsSync(localPath)) {
           console.log(`📤 Uploading main thumbnail (${thumbMatch[1]}) to Cloudinary...`);
           const result = await cloudinary.uploader.upload(localPath, {
-            folder: 'ten11_ecommerce_products'
+            folder: 'devclothes_ecommerce_products'
           });
           imageUrls.push(result.secure_url);
         }
@@ -115,7 +115,7 @@ async function seedData() {
             if (fs.existsSync(localPath)) {
               console.log(`📤 Uploading detail image (${varName}) to Cloudinary...`);
               const result = await cloudinary.uploader.upload(localPath, {
-                folder: 'ten11_ecommerce_products'
+                folder: 'devclothes_ecommerce_products'
               });
               imageUrls.push(result.secure_url);
             }

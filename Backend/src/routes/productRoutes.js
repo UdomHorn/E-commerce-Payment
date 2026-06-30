@@ -212,25 +212,51 @@ router.put(
       // Image handling
       let imageUrls = product.images; // Default to existing images
 
+      // Parse existingImages from request body if present
+      let retainedImages = [];
+      if (req.body.existingImages) {
+        retainedImages = parseArray(req.body.existingImages);
+      } else {
+        retainedImages = product.images || [];
+      }
+
       const cardImageFiles = req.files && req.files['cardImage'] ? req.files['cardImage'] : [];
       const detailImageFiles = req.files && req.files['detailImages'] ? req.files['detailImages'] : [];
 
-      if (cardImageFiles.length > 0 || detailImageFiles.length > 0) {
+      const hasNewFiles = cardImageFiles.length > 0 || detailImageFiles.length > 0;
+      const hasRetainedList = req.body.existingImages !== undefined;
+
+      if (hasNewFiles || hasRetainedList) {
         const cardImageUrl = cardImageFiles.length > 0 ? cardImageFiles[0].path : null;
         const detailImageUrls = detailImageFiles.map(file => file.path);
 
         const newImageUrls = [];
+        
+        // 1. Resolve card image (index 0)
         if (cardImageUrl) {
           newImageUrls.push(cardImageUrl);
-        } else if (product.images.length > 0) {
-          newImageUrls.push(product.images[0]); // Keep old cardImage
+        } else {
+          // If no new card image, find if the original card image is retained
+          const originalCardImage = product.images && product.images[0];
+          if (originalCardImage && retainedImages.includes(originalCardImage)) {
+            newImageUrls.push(originalCardImage);
+          } else if (retainedImages.length > 0) {
+            newImageUrls.push(retainedImages[0]);
+          }
         }
 
+        // 2. Resolve detail images (index 1+)
+        const originalCardImage = product.images && product.images[0];
+        const retainedDetails = retainedImages.filter(
+          img => img !== originalCardImage && img !== newImageUrls[0]
+        );
+        newImageUrls.push(...retainedDetails);
+
+        // Append newly uploaded detail images
         if (detailImageUrls.length > 0) {
           newImageUrls.push(...detailImageUrls);
-        } else if (product.images.length > 1) {
-          newImageUrls.push(...product.images.slice(1)); // Keep old details
         }
+
         imageUrls = newImageUrls;
       }
 

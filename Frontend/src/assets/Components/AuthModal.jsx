@@ -229,7 +229,7 @@ const AuthModal = () => {
 
           {/* Logo Branding */}
           <div className="flex justify-center mb-6">
-            <img src={logo} alt="TEN11 Logo" className="w-[100px] object-contain" />
+            <img src={logo} alt="Devclothes Logo" className="w-[100px] object-contain" />
           </div>
 
           {/* Auth Tabs */}

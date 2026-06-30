@@ -4,23 +4,12 @@ import Collection from '../assets/Components/Collection'
 import HightLightCard from '../assets/Components/HightLightCard'
 import API_BASE from '../config'
 
-// Import default local fallback images
-import defaultWomen from '../assets/Images/8J6A0448.jpg'
-import defaultMen from '../assets/Images/8J6A0460.jpg'
-import defaultSlide1 from '../assets/Images/TEN11 - Puppy Love Collection App Banner.jpg'
-import defaultSlide2 from '../assets/Images/TEN11 - Grand Prix App banner.jpg'
-
-const defaultBanners = [
-  { imageUrl: defaultSlide1, title: 'Puppy Love Collection' },
-  { imageUrl: defaultSlide2, title: 'Grand Prix' }
-]
-
 const Home = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [products, setProducts] = useState([]);
-  const [banners, setBanners] = useState(defaultBanners);
-  const [womenBanner, setWomenBanner] = useState(defaultWomen);
-  const [menBanner, setMenBanner] = useState(defaultMen);
+  const [banners, setBanners] = useState(null); // start as null to prevent flash
+  const [womenBanner, setWomenBanner] = useState(null);
+  const [menBanner, setMenBanner] = useState(null);
 
   // Set page title
   useEffect(() => {
@@ -35,12 +24,17 @@ const Home = () => {
         if (response.ok) {
           const data = await response.json();
           const women = data.find(b => b.category === 'Women');
-          setWomenBanner(women ? women.imageUrl : defaultWomen);
+          setWomenBanner(women ? women.imageUrl : "");
           const men = data.find(b => b.category === 'Men');
-          setMenBanner(men ? men.imageUrl : defaultMen);
+          setMenBanner(men ? men.imageUrl : "");
+        } else {
+          setWomenBanner("");
+          setMenBanner("");
         }
       } catch (err) {
         console.error('Failed to fetch category banners:', err);
+        setWomenBanner("");
+        setMenBanner("");
       }
     };
     fetchCategoryBanners();
@@ -56,11 +50,14 @@ const Home = () => {
           if (data && data.length > 0) {
             setBanners(data);
           } else {
-            setBanners(defaultBanners);
+            setBanners([]);
           }
+        } else {
+          setBanners([]);
         }
       } catch (err) {
         console.error('Failed to fetch banners:', err);
+        setBanners([]);
       }
     };
     fetchBanners();
@@ -68,7 +65,7 @@ const Home = () => {
 
   // Banner Slideshow rotation
   useEffect(() => {
-    if (banners.length <= 1) return;
+    if (!banners || banners.length <= 1) return;
     const interval = setInterval(() => {
       setCurrentIndex((prevIndex) => 
         prevIndex === banners.length - 1 ? 0 : prevIndex + 1
@@ -98,22 +95,39 @@ const Home = () => {
     <div className='pt-[48px] font-roboto'>
       {/* Banner Carousel */}
       <div className="w-full overflow-hidden bg-gray-100 h-[calc(100vh-48px)]">
-        {banners.length > 0 && (
+        {banners === null ? (
+          // Shimmer/Skeleton loader while fetching
+          <div className="w-full h-full bg-neutral-100 animate-pulse flex items-center justify-center">
+            <span className="text-gray-400 text-xs font-semibold tracking-wider uppercase">Loading Banners...</span>
+          </div>
+        ) : banners.length > 0 ? (
           <img src={banners[currentIndex]?.imageUrl}
             alt={banners[currentIndex]?.title || 'banner'}
             className="w-full h-full object-cover transition-all duration-[3000ms]"
           />
-        )}
+        ) : null}
       </div>
 
       {/* Collection Categories */}
       <div className='w-[75%] max-md:w-[94%] h-full flex justify-center items-center m-auto mt-4 gap-7'>
-        <Link to="/Women" className="hover:opacity-95 transition flex-1">
-          <Collection src={womenBanner} title="Women Collection" />
-        </Link>
-        <Link to="/Men" className="hover:opacity-95 transition flex-1">
-          <Collection src={menBanner} title="Men Collection" />
-        </Link>
+        <div className="flex-1">
+          {womenBanner === null ? (
+            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-xl flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
+          ) : (
+            <Link to="/Women" className="hover:opacity-95 transition block">
+              <Collection src={womenBanner} title="Women Collection" />
+            </Link>
+          )}
+        </div>
+        <div className="flex-1">
+          {menBanner === null ? (
+            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-xl flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
+          ) : (
+            <Link to="/Men" className="hover:opacity-95 transition block">
+              <Collection src={menBanner} title="Men Collection" />
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Products Grid */}
