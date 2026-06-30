@@ -184,7 +184,7 @@ const Home = () => {
       <div className='w-[75%] max-md:w-[94%] h-full flex justify-center items-center m-auto mt-4 gap-7'>
         <div className="flex-1">
           {womenBanner === null ? (
-            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-xl flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
+            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-none flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
           ) : (
             <Link to="/Women" className="hover:opacity-95 transition block">
               <Collection src={womenBanner} title="Women Collection" />
@@ -193,7 +193,7 @@ const Home = () => {
         </div>
         <div className="flex-1">
           {menBanner === null ? (
-            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-xl flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
+            <div className="w-full aspect-[4/5] bg-neutral-100 animate-pulse rounded-none flex items-center justify-center text-xs font-semibold text-gray-400">Loading...</div>
           ) : (
             <Link to="/Men" className="hover:opacity-95 transition block">
               <Collection src={menBanner} title="Men Collection" />

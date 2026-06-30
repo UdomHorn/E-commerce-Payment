@@ -8,6 +8,7 @@ import ProductDetail from './Pages/ProductDetail'
 import Checkout from '././Pages/Checkout'
 import Favorites from './Pages/Favorites'
 import MyOrders from './Pages/MyOrders'
+import Collections from './Pages/Collections'
 import { Routes, Route } from 'react-router-dom'
 import AuthModal from './assets/Components/AuthModal'
 import ScrollToTop from './assets/Components/ScrollToTop'
@@ -26,6 +27,7 @@ function App() {
         <Route path="/Men" element={<Men />} />
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/my-orders" element={<MyOrders />} />
+        <Route path="/collections" element={<Collections />} />
       </Routes>
       <Footer />
       <AuthModal />

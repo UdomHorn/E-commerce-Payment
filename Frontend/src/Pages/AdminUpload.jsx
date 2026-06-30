@@ -1877,7 +1877,6 @@ const AdminUpload = () => {
                       <span className="text-sm font-extrabold text-black">Slide 1 Image</span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-400 font-mono">1920 × 820px</span>
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                     </div>
 
@@ -1952,7 +1951,6 @@ const AdminUpload = () => {
                       <span className="text-sm font-extrabold text-black">Slide 2 Image</span>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-400 font-mono">1920 × 820px</span>
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                     </div>
 
@@ -2064,7 +2062,6 @@ const AdminUpload = () => {
                       <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 border-b border-gray-100 pb-2">
                         <span className="text-sm font-extrabold text-black">Women Collection</span>
                         <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                       <p className="text-xs text-gray-400 mt-3">
                         {pendingPreviews.Women ? 'New Image Selected (pending save)' : dbCategoryBanners.find(b => b.category === 'Women') ? 'Active Category Banner' : 'No active banner set'}
@@ -2138,7 +2135,6 @@ const AdminUpload = () => {
                       <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 border-b border-gray-100 pb-2">
                         <span className="text-sm font-extrabold text-black">Men Collection</span>
                         <span className="text-[10px] text-gray-400 font-mono">1000 × 1250px</span>
-                        <span className="text-[9px] font-bold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Required</span>
                       </div>
                       <p className="text-xs text-gray-400 mt-3">
                         {pendingPreviews.Men ? 'New Image Selected (pending save)' : dbCategoryBanners.find(b => b.category === 'Men') ? 'Active Category Banner' : 'No active banner set'}
