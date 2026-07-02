@@ -278,11 +278,11 @@ const Nav = () => {
         className='w-full bg-white flex flex-col items-center relative'
         onMouseLeave={() => setActiveDropdown(null)}
       >
-        <div className='flex items-center p-2.5 w-[80%] max-md:w-full max-md:justify-between'>
+        <div className='flex items-center p-2.5 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 lg:justify-between max-lg:justify-between relative'>
 
           {/* Hamburger button — mobile only */}
           <button
-            className='md:hidden flex flex-col justify-center items-center w-9 h-9 gap-[5px] cursor-pointer focus:outline-none flex-shrink-0'
+            className='lg:hidden flex flex-col justify-center items-center w-9 h-9 gap-[5px] cursor-pointer focus:outline-none flex-shrink-0'
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open menu"
           >
@@ -292,7 +292,7 @@ const Nav = () => {
           </button>
 
           {/* Left section: Navigation links (Desktop only) */}
-          <div className='hidden md:flex gap-8 items-center text-base font-semibold text-gray-800 tracking-wide'>
+          <div className='hidden lg:flex lg:gap-6 xl:gap-8 items-center text-base font-semibold text-gray-800 tracking-wide'>
             <div
               className="relative py-2 cursor-pointer hover:text-black transition-colors"
               onMouseEnter={() => setActiveDropdown('collections')}
@@ -320,8 +320,8 @@ const Nav = () => {
           </div>
 
           {/* Center section: Logo — absolute center on desktop, flex center on mobile */}
-          <div className='md:absolute md:left-1/2 md:-translate-x-1/2 flex gap-2 items-center text-2xl'>
-            <div className='w-[150px] max-md:w-[110px]'>
+          <div className='lg:absolute lg:left-1/2 lg:-translate-x-1/2 flex gap-2 items-center text-2xl'>
+            <div className='w-[130px] xl:w-[150px] max-lg:w-[110px]'>
               <Link to="/">
                 <img src={logo} alt="Logo" />
               </Link>
@@ -329,7 +329,7 @@ const Nav = () => {
           </div>
 
           {/* Right section: Action Icons */}
-          <div className='flex text-xl gap-3 md:gap-5 items-center'>
+          <div className='flex text-xl gap-3 lg:gap-5 items-center'>
             <style>{`
               .no-scrollbar::-webkit-scrollbar {
                 display: none;
@@ -435,7 +435,7 @@ const Nav = () => {
             )}
 
             {/* User Account Icon and Dropdown */}
-            <div className="relative flex items-center justify-center" ref={userDropdownRef}>
+            <div className="hidden lg:flex relative items-center justify-center" ref={userDropdownRef}>
               <button
                 onClick={() => {
                   if (user) {
@@ -508,7 +508,7 @@ const Nav = () => {
 
             <Link
               to="/favorites"
-              className='cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center'
+              className='hidden lg:flex cursor-pointer p-1 hover:text-gray-600 transition-colors relative items-center justify-center'
               aria-label="Favorites"
             >
               <svg 
@@ -555,10 +555,10 @@ const Nav = () => {
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="hidden md:block absolute left-0 top-full w-full bg-white border-b border-gray-200 shadow-xl overflow-hidden z-20"
+              className="hidden lg:block absolute left-0 top-full w-full bg-white border-b border-gray-200 shadow-xl overflow-hidden z-20"
             >
               {activeDropdown === 'collections' ? (
-                <div className="w-[80%] mx-auto py-8 grid grid-cols-12 gap-8 text-left">
+                <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-12 gap-8 text-left">
                   {/* Left Side: Campaign text link list */}
                   <div className="col-span-7 flex flex-col justify-start">
                     <ul className="space-y-4">
@@ -632,7 +632,7 @@ const Nav = () => {
                   </div>
                 </div>
               ) : (
-                <div className="w-[80%] mx-auto py-8 grid grid-cols-12 gap-8 text-left">
+                <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-12 gap-8 text-left">
                   {/* Left Side: Category text link list */}
                   <div className="col-span-7 flex flex-col justify-start">
                     <ul className="space-y-4">
