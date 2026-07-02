@@ -25,6 +25,8 @@ const Nav = () => {
   const [hoveredSubcategory, setHoveredSubcategory] = useState('all');
   const [womenBanner, setWomenBanner] = useState("");
   const [menBanner, setMenBanner] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileAccordion, setMobileAccordion] = useState(null);
 
   const inputRef = useRef(null);
   const userDropdownRef = useRef(null);
@@ -210,18 +212,40 @@ const Nav = () => {
     };
   }, [showSearch]);
 
-  // Handle Escape key to close search, activeDropdown or userDropdown
+  // Handle Escape key to close search, activeDropdown, userDropdown, or mobileMenu
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         setShowSearch(false);
         setActiveDropdown(null);
         setShowUserDropdown(false);
+        setMobileMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else if (!showSearch) {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      if (!showSearch) document.body.style.overflow = '';
+    };
+  }, [mobileMenuOpen, showSearch]);
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+    setMobileAccordion(null);
+  };
+
+  const toggleMobileAccordion = (key) => {
+    setMobileAccordion(prev => prev === key ? null : key);
+  };
 
   // Debounced search query fetching
   useEffect(() => {
@@ -254,9 +278,21 @@ const Nav = () => {
         className='w-full bg-white flex flex-col items-center relative'
         onMouseLeave={() => setActiveDropdown(null)}
       >
-        <div className='flex justify-between w-[80%] items-center p-2.5 max-md:w-full'>
+        <div className='flex items-center p-2.5 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 lg:justify-between max-lg:justify-between relative'>
+
+          {/* Hamburger button — mobile only */}
+          <button
+            className='lg:hidden flex flex-col justify-center items-center w-9 h-9 gap-[5px] cursor-pointer focus:outline-none flex-shrink-0'
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open menu"
+          >
+            <span className='block w-6 h-[2px] bg-gray-800 rounded-full transition-all' />
+            <span className='block w-6 h-[2px] bg-gray-800 rounded-full transition-all' />
+            <span className='block w-6 h-[2px] bg-gray-800 rounded-full transition-all' />
+          </button>
+
           {/* Left section: Navigation links (Desktop only) */}
-          <div className='hidden md:flex gap-8 items-center text-base font-semibold text-gray-800 tracking-wide'>
+          <div className='hidden lg:flex lg:gap-6 xl:gap-8 items-center text-base font-semibold text-gray-800 tracking-wide'>
             <div
               className="relative py-2 cursor-pointer hover:text-black transition-colors"
               onMouseEnter={() => setActiveDropdown('collections')}
@@ -283,9 +319,9 @@ const Nav = () => {
             </div>
           </div>
 
-          {/* Center section: Logo */}
-          <div className='absolute left-1/2 -translate-x-1/2 flex gap-2 items-center text-2xl'>
-            <div className='w-[150px] max-md:w-[120px]'>
+          {/* Center section: Logo — absolute center on desktop, flex center on mobile */}
+          <div className='lg:absolute lg:left-1/2 lg:-translate-x-1/2 flex gap-2 items-center text-2xl'>
+            <div className='w-[130px] xl:w-[150px] max-lg:w-[110px]'>
               <Link to="/">
                 <img src={logo} alt="Logo" />
               </Link>
@@ -293,7 +329,7 @@ const Nav = () => {
           </div>
 
           {/* Right section: Action Icons */}
-          <div className='flex text-xl gap-5 items-center'>
+          <div className='flex text-xl gap-3 lg:gap-5 items-center'>
             <style>{`
               .no-scrollbar::-webkit-scrollbar {
                 display: none;
@@ -399,7 +435,7 @@ const Nav = () => {
             )}
 
             {/* User Account Icon and Dropdown */}
-            <div className="relative flex items-center justify-center" ref={userDropdownRef}>
+            <div className="hidden lg:flex relative items-center justify-center" ref={userDropdownRef}>
               <button
                 onClick={() => {
                   if (user) {
@@ -472,7 +508,7 @@ const Nav = () => {
 
             <Link
               to="/favorites"
-              className='cursor-pointer p-1 hover:text-gray-600 transition-colors relative flex items-center justify-center'
+              className='hidden lg:flex cursor-pointer p-1 hover:text-gray-600 transition-colors relative items-center justify-center'
               aria-label="Favorites"
             >
               <svg 
@@ -519,10 +555,10 @@ const Nav = () => {
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="hidden md:block absolute left-0 top-full w-full bg-white border-b border-gray-200 shadow-xl overflow-hidden z-20"
+              className="hidden lg:block absolute left-0 top-full w-full bg-white border-b border-gray-200 shadow-xl overflow-hidden z-20"
             >
               {activeDropdown === 'collections' ? (
-                <div className="w-[80%] mx-auto py-8 grid grid-cols-12 gap-8 text-left">
+                <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-12 gap-8 text-left">
                   {/* Left Side: Campaign text link list */}
                   <div className="col-span-7 flex flex-col justify-start">
                     <ul className="space-y-4">
@@ -596,7 +632,7 @@ const Nav = () => {
                   </div>
                 </div>
               ) : (
-                <div className="w-[80%] mx-auto py-8 grid grid-cols-12 gap-8 text-left">
+                <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-12 gap-8 text-left">
                   {/* Left Side: Category text link list */}
                   <div className="col-span-7 flex flex-col justify-start">
                     <ul className="space-y-4">
@@ -687,6 +723,238 @@ const Nav = () => {
           )}
         </AnimatePresence>
       </div>
+
+      {/* ── Mobile Drawer ── */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+              onClick={closeMobileMenu}
+            />
+
+            {/* Drawer Panel */}
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'tween', duration: 0.3, ease: 'easeInOut' }}
+              className="fixed top-0 left-0 h-full w-[80%] max-w-xs bg-white z-50 flex flex-col shadow-2xl overflow-y-auto"
+            >
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <Link to="/" onClick={closeMobileMenu}>
+                  <img src={logo} alt="Logo" className="w-[100px]" />
+                </Link>
+                <button
+                  onClick={closeMobileMenu}
+                  className="p-2 text-gray-500 hover:text-black transition-colors cursor-pointer focus:outline-none"
+                  aria-label="Close menu"
+                >
+                  <FontAwesomeIcon icon={faXmark} className="text-xl" />
+                </button>
+              </div>
+
+              {/* Drawer Nav Links with Accordions */}
+              <nav className="flex-1 px-4 py-4 space-y-1">
+
+                {/* Collections accordion */}
+                <div>
+                  <button
+                    onClick={() => toggleMobileAccordion('collections')}
+                    className="w-full flex justify-between items-center px-2 py-3 text-base font-semibold text-gray-800 hover:text-black transition-colors cursor-pointer focus:outline-none"
+                  >
+                    <span>Collections</span>
+                    <motion.span
+                      animate={{ rotate: mobileAccordion === 'collections' ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-gray-400 text-sm"
+                    >
+                      ▾
+                    </motion.span>
+                  </button>
+                  <AnimatePresence>
+                    {mobileAccordion === 'collections' && (
+                      <motion.ul
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden pl-4 space-y-1"
+                      >
+                        {['Spring', 'Summer', 'Fall', 'Winter'].map((season) => (
+                          <li key={season}>
+                            <Link
+                              to="/collections"
+                              onClick={closeMobileMenu}
+                              className="block py-2 text-sm text-gray-500 hover:text-black transition-colors font-medium"
+                            >
+                              {season} Collection
+                            </Link>
+                          </li>
+                        ))}
+                      </motion.ul>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="h-px bg-gray-100" />
+
+                {/* Women accordion */}
+                <div>
+                  <button
+                    onClick={() => toggleMobileAccordion('women')}
+                    className="w-full flex justify-between items-center px-2 py-3 text-base font-semibold text-gray-800 hover:text-black transition-colors cursor-pointer focus:outline-none"
+                  >
+                    <span>Women</span>
+                    <motion.span
+                      animate={{ rotate: mobileAccordion === 'women' ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-gray-400 text-sm"
+                    >
+                      ▾
+                    </motion.span>
+                  </button>
+                  <AnimatePresence>
+                    {mobileAccordion === 'women' && (
+                      <motion.ul
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden pl-4 space-y-1"
+                      >
+                        {['Tops & T-Shirts', 'Hoodies & Sweatshirts', 'Pants & Jeans', 'Jackets & Outerwear'].map((item) => (
+                          <li key={item}>
+                            <Link
+                              to="/Women"
+                              onClick={closeMobileMenu}
+                              className="block py-2 text-sm text-gray-500 hover:text-black transition-colors font-medium"
+                            >
+                              {item}
+                            </Link>
+                          </li>
+                        ))}
+                      </motion.ul>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="h-px bg-gray-100" />
+
+                {/* Men accordion */}
+                <div>
+                  <button
+                    onClick={() => toggleMobileAccordion('men')}
+                    className="w-full flex justify-between items-center px-2 py-3 text-base font-semibold text-gray-800 hover:text-black transition-colors cursor-pointer focus:outline-none"
+                  >
+                    <span>Men</span>
+                    <motion.span
+                      animate={{ rotate: mobileAccordion === 'men' ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-gray-400 text-sm"
+                    >
+                      ▾
+                    </motion.span>
+                  </button>
+                  <AnimatePresence>
+                    {mobileAccordion === 'men' && (
+                      <motion.ul
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden pl-4 space-y-1"
+                      >
+                        {['Tops & T-Shirts', 'Hoodies & Sweatshirts', 'Pants & Jeans', 'Jackets & Outerwear'].map((item) => (
+                          <li key={item}>
+                            <Link
+                              to="/Men"
+                              onClick={closeMobileMenu}
+                              className="block py-2 text-sm text-gray-500 hover:text-black transition-colors font-medium"
+                            >
+                              {item}
+                            </Link>
+                          </li>
+                        ))}
+                      </motion.ul>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="h-px bg-gray-100" />
+
+                {/* Utility links */}
+                <Link
+                  to="/favorites"
+                  onClick={closeMobileMenu}
+                  className="flex items-center gap-3 px-2 py-3 text-base font-semibold text-gray-800 hover:text-black transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+                  </svg>
+                  Favorites
+                </Link>
+
+                <Link
+                  to="/my-orders"
+                  onClick={closeMobileMenu}
+                  className="flex items-center gap-3 px-2 py-3 text-base font-semibold text-gray-800 hover:text-black transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+                  </svg>
+                  My Purchases
+                </Link>
+
+                {user?.role === 'admin' && (
+                  <Link
+                    to="/admin/upload"
+                    onClick={closeMobileMenu}
+                    className="flex items-center gap-3 px-2 py-3 text-base font-semibold text-gray-800 hover:text-black transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                    </svg>
+                    Admin Portal
+                  </Link>
+                )}
+              </nav>
+
+              {/* Drawer Footer: Account / Sign Out */}
+              <div className="border-t border-gray-100 px-5 py-4">
+                {user ? (
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-gray-400">Signed in as</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">{user.email}</p>
+                    </div>
+                    <button
+                      onClick={() => { logout(); closeMobileMenu(); }}
+                      className="w-full py-2.5 bg-black text-white text-sm font-bold tracking-wide rounded-lg hover:opacity-90 transition-opacity cursor-pointer focus:outline-none"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { openAuthModal(); closeMobileMenu(); }}
+                    className="w-full py-2.5 bg-black text-white text-sm font-bold tracking-wide rounded-lg hover:opacity-90 transition-opacity cursor-pointer focus:outline-none"
+                  >
+                    Sign In
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Modern Fullscreen Search Overlay */}
       <AnimatePresence>
